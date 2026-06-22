@@ -7,18 +7,70 @@ from cryptography.fernet import Fernet
 
 from app.config import settings
 
+# Path to persist the encryption key across restarts
+# Stored inside the app directory so it is bundled with the application image
+# and can be mounted as a Docker volume for persistence across restarts
+_ENCRYPTION_KEY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".encryption_key")
+
 
 class EncryptionService:
     """Service for encrypting and decrypting secrets."""
 
     @staticmethod
+    def _load_or_generate_key() -> str:
+        """Load encryption key from persistent storage or generate one.
+
+        Priority:
+        1. Environment variable ENCRYPTION_KEY (if set and not placeholder)
+        2. Persisted key file (read on first call, cached in settings)
+        3. Generate new key and persist to file
+
+        Raises:
+            RuntimeError: If the default placeholder key is used and no
+                persistent storage is available (e.g., read-only filesystem).
+        """
+        key = settings.ENCRYPTION_KEY
+        default_placeholder = settings.model_fields["ENCRYPTION_KEY"].default
+
+        # If user provided a real key via env var, use it directly
+        if key != default_placeholder:
+            return key
+
+        # If we already generated and cached a key in this process, use it
+        cached_key = settings.ENCRYPTION_KEY
+        if cached_key != default_placeholder:
+            return cached_key
+
+        # Try to load from persistent file
+        if os.path.exists(_ENCRYPTION_KEY_FILE):
+            try:
+                with open(_ENCRYPTION_KEY_FILE, "r") as f:
+                    persisted_key = f.read().strip()
+                if persisted_key:
+                    settings.ENCRYPTION_KEY = persisted_key
+                    return persisted_key
+            except OSError:
+                pass  # Fall through to generation
+
+        # Generate a new key and persist it
+        new_key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+        try:
+            with open(_ENCRYPTION_KEY_FILE, "w") as f:
+                f.write(new_key)
+            settings.ENCRYPTION_KEY = new_key
+            return new_key
+        except OSError:
+            raise RuntimeError(
+                "Cannot start: encryption key is the default placeholder and "
+                "the application cannot persist a new key to disk. "
+                f"Set the ENCRYPTION_KEY environment variable to a valid 32-byte base64-encoded key, "
+                f"or ensure write access to {_ENCRYPTION_KEY_FILE}"
+            )
+
+    @staticmethod
     def _get_fernet() -> Fernet:
         """Get Fernet instance from configured key."""
-        key = settings.ENCRYPTION_KEY
-        # If key is the default placeholder, generate a random one
-        if key == settings.model_fields["ENCRYPTION_KEY"].default:
-            key = base64.urlsafe_b64encode(os.urandom(32)).decode()
-            settings.ENCRYPTION_KEY = key
+        key = EncryptionService._load_or_generate_key()
         return Fernet(key.encode())
 
     @staticmethod
