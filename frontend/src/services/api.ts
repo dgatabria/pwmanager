@@ -39,6 +39,14 @@ const api = {
     api.request<T>(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
   delete: (endpoint: string) =>
     api.request<void>(endpoint, { method: 'DELETE' }),
+
+  // Audit-logged endpoints
+  getMaskedSecret: <T>(secretId: number) =>
+    api.request<T>(`/secrets/${secretId}/masked`, { method: 'GET' }),
+  revealSecret: <T>(secretId: number) =>
+    api.request<T>(`/secrets/${secretId}/reveal`, { method: 'GET' }),
+  copySecret: <T>(secretId: number) =>
+    api.request<T>(`/secrets/${secretId}/copy`, { method: 'POST' }),
 }
 
 export default api

@@ -29,5 +29,6 @@ async def init_db():
     from app.models.secret import Secret
     from app.models.user_group import UserGroup
     from app.models.secret_group_member import SecretGroupMember
+    from app.models.audit_log import AuditLog
 
     await engine.create_all()

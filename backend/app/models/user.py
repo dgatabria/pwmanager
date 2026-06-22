@@ -34,6 +34,9 @@ class User(Base):
     secrets: Mapped[list["Secret"]] = relationship(
         back_populates="owner", lazy="selectin"
     )
+    audit_logs: Mapped[list["AuditLog"]] = relationship(
+        back_populates="user", lazy="selectin"
+    )
 
     def __repr__(self) -> str:
         return f"<User {self.username}>"

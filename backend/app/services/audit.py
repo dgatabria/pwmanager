@@ -1,0 +1,112 @@
+"""Audit logging service for tracking secret access events."""
+
+from datetime import datetime, timezone
+
+from fastapi import Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.audit_log import AuditLog
+
+
+class AuditService:
+    """Service for creating and querying audit logs."""
+
+    EVENT_REVEAL = "secret_reveal"
+    EVENT_COPY = "secret_copy"
+    EVENT_VIEW = "secret_view"
+
+    @staticmethod
+    def _extract_client_ip(request: Request) -> str:
+        """Extract real client IP from request, handling proxies."""
+        # Check X-Forwarded-For header (behind reverse proxy)
+        forwarded_for = request.headers.get("x-forwarded-for")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
+
+        # Check X-Real-IP header
+        real_ip = request.headers.get("x-real-ip")
+        if real_ip:
+            return real_ip
+
+        # Fall back to connection host
+        if request.client:
+            return request.client.host
+
+        return "unknown"
+
+    @staticmethod
+    def _extract_user_agent(request: Request) -> str:
+        """Extract user agent from request."""
+        return request.headers.get("user-agent", "unknown")[:500]
+
+    @staticmethod
+    async def log_event(
+        db: AsyncSession,
+        event_type: str,
+        user_id: int | None,
+        secret_id: int | None,
+        request: Request,
+        details: str | None = None,
+    ) -> AuditLog:
+        """Create an audit log entry for a secret access event."""
+        audit_entry = AuditLog(
+            user_id=user_id,
+            event_type=event_type,
+            secret_id=secret_id,
+            ip_address=AuditService._extract_client_ip(request),
+            user_agent=AuditService._extract_user_agent(request),
+            details=details,
+            timestamp=datetime.now(timezone.utc),
+        )
+        db.add(audit_entry)
+        await db.commit()
+        await db.refresh(audit_entry)
+        return audit_entry
+
+    @staticmethod
+    async def get_user_audit_logs(
+        db: AsyncSession,
+        user_id: int,
+        limit: int = 50,
+    ) -> list[AuditLog]:
+        """Get audit logs for a specific user."""
+        from app.models.user import User
+
+        result = await db.execute(
+            select(AuditLog)
+            .where(AuditLog.user_id == user_id)
+            .order_by(AuditLog.timestamp.desc())
+            .limit(limit)
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_secret_audit_logs(
+        db: AsyncSession,
+        secret_id: int,
+        limit: int = 50,
+    ) -> list[AuditLog]:
+        """Get audit logs for a specific secret."""
+        result = await db.execute(
+            select(AuditLog)
+            .where(AuditLog.secret_id == secret_id)
+            .order_by(AuditLog.timestamp.desc())
+            .limit(limit)
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_all_audit_logs(
+        db: AsyncSession,
+        limit: int = 100,
+        event_type: str | None = None,
+    ) -> list[AuditLog]:
+        """Get all audit logs, optionally filtered by event type."""
+        query = select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(limit)
+
+        if event_type:
+            query = query.where(AuditLog.event_type == event_type)
+
+        result = await db.execute(query)
+        return result.scalars().all()

@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,8 +18,12 @@ from app.schemas.secret import (
     SecretResponse,
     SecretUpdate,
     SecretViewResponse,
+    SecretMaskedResponse,
+    SecretRevealResponse,
+    SecretCopyResponse,
 )
 from app.services.encryption import EncryptionService
+from app.services.audit import AuditService
 from app.utils.security import SecurityUtils
 
 router = APIRouter(prefix="/api/secrets", tags=["Secrets"])
@@ -303,4 +307,120 @@ async def generate_ssh_key(
         private_key=private_key,
         fingerprint=fingerprint,
         key_length=request.key_length,
+    )
+
+
+@router.get("/{secret_id}/masked", response_model=SecretMaskedResponse)
+async def get_secret_masked(
+    secret_id: int,
+    user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a secret with masked data (asterisks). No audit event."""
+    secret = await check_secret_access(secret_id, user_id, db)
+
+    # Get group name and owner username
+    group_name = secret.group.name if secret.group else None
+    owner_username = None
+    if secret.owner:
+        owner_username = secret.owner.username
+
+    return SecretMaskedResponse(
+        id=secret.id,
+        title=secret.title,
+        description=secret.description,
+        secret_type=secret.secret_type,
+        decrypted_data="••••••••••••••••",
+        key_length=secret.key_length,
+        username=secret.username,
+        url=secret.url,
+        group_name=group_name,
+        owner_username=owner_username,
+        is_active=secret.is_active,
+        created_at=str(secret.created_at),
+        updated_at=str(secret.updated_at),
+    )
+
+
+@router.get("/{secret_id}/reveal", response_model=SecretRevealResponse)
+async def reveal_secret(
+    secret_id: int,
+    user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+    request: Request = None,
+):
+    """Reveal secret data with full audit logging."""
+    secret = await check_secret_access(secret_id, user_id, db)
+
+    # Decrypt the data
+    decrypted_data = EncryptionService.decrypt(secret.encrypted_data)
+
+    # Get group name and owner username
+    group_name = secret.group.name if secret.group else None
+    owner_username = None
+    if secret.owner:
+        owner_username = secret.owner.username
+
+    # Log audit event
+    audit_entry = await AuditService.log_event(
+        db=db,
+        event_type=AuditService.EVENT_REVEAL,
+        user_id=user_id,
+        secret_id=secret_id,
+        request=request,
+        details=f"User {user_id} revealed secret '{secret.title}' (ID: {secret_id})",
+    )
+
+    return SecretRevealResponse(
+        id=secret.id,
+        title=secret.title,
+        description=secret.description,
+        secret_type=secret.secret_type,
+        decrypted_data=decrypted_data,
+        key_length=secret.key_length,
+        username=secret.username,
+        url=secret.url,
+        group_name=group_name,
+        owner_username=owner_username,
+        is_active=secret.is_active,
+        created_at=str(secret.created_at),
+        updated_at=str(secret.updated_at),
+        audit_id=audit_entry.id,
+        audit_event=audit_entry.event_type,
+        audit_timestamp=str(audit_entry.timestamp),
+        audit_ip=audit_entry.ip_address,
+    )
+
+
+@router.post("/{secret_id}/copy", response_model=SecretCopyResponse)
+async def copy_secret(
+    secret_id: int,
+    user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+    request: Request = None,
+):
+    """Copy secret data to clipboard with full audit logging."""
+    secret = await check_secret_access(secret_id, user_id, db)
+
+    # Decrypt the data
+    decrypted_data = EncryptionService.decrypt(secret.encrypted_data)
+
+    # Log audit event
+    audit_entry = await AuditService.log_event(
+        db=db,
+        event_type=AuditService.EVENT_COPY,
+        user_id=user_id,
+        secret_id=secret_id,
+        request=request,
+        details=f"User {user_id} copied secret '{secret.title}' (ID: {secret_id}) to clipboard",
+    )
+
+    return SecretCopyResponse(
+        id=secret.id,
+        title=secret.title,
+        decrypted_data=decrypted_data,
+        audit_id=audit_entry.id,
+        audit_event=audit_entry.event_type,
+        audit_timestamp=str(audit_entry.timestamp),
+        audit_ip=audit_entry.ip_address,
     )

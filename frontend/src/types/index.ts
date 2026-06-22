@@ -18,6 +18,52 @@ export interface Secret {
   owner_username?: string
 }
 
+export interface SecretMasked {
+  id: number
+  title: string
+  description: string | null
+  secret_type: SecretType
+  decrypted_data: string // always "••••••••••••••••"
+  key_length: number | null
+  username: string | null
+  url: string | null
+  group_name: string | null
+  owner_username: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface SecretReveal {
+  id: number
+  title: string
+  description: string | null
+  secret_type: SecretType
+  decrypted_data: string
+  key_length: number | null
+  username: string | null
+  url: string | null
+  group_name: string | null
+  owner_username: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  audit_id: number
+  audit_event: string
+  audit_timestamp: string
+  audit_ip: string
+}
+
+export interface SecretCopy {
+  id: number
+  title: string
+  decrypted_data: string
+  audit_id: number
+  audit_event: string
+  audit_timestamp: string
+  audit_ip: string
+}
+
 export interface SecretGroup {
   id: number
   name: string

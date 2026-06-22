@@ -63,6 +63,64 @@ class SecretViewResponse(BaseModel):
         from_attributes = True
 
 
+class SecretMaskedResponse(BaseModel):
+    """Response with masked data (asterisks)."""
+    id: int
+    title: str
+    description: str | None
+    secret_type: SecretType
+    decrypted_data: str = "••••••••••••••••"
+    key_length: int | None
+    username: str | None
+    url: str | None
+    group_name: str | None
+    owner_username: str | None
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class SecretRevealResponse(BaseModel):
+    """Response with revealed data + audit info."""
+    id: int
+    title: str
+    description: str | None
+    secret_type: SecretType
+    decrypted_data: str
+    key_length: int | None
+    username: str | None
+    url: str | None
+    group_name: str | None
+    owner_username: str | None
+    is_active: bool
+    created_at: str
+    updated_at: str
+    audit_id: int
+    audit_event: str
+    audit_timestamp: str
+    audit_ip: str
+
+    class Config:
+        from_attributes = True
+
+
+class SecretCopyResponse(BaseModel):
+    """Response with data for clipboard + audit info."""
+    id: int
+    title: str
+    decrypted_data: str
+    audit_id: int
+    audit_event: str
+    audit_timestamp: str
+    audit_ip: str
+
+    class Config:
+        from_attributes = True
+
+
 class SSHKeyGenerateRequest(BaseModel):
     key_length: int = 4096
     comment: str = "corporate-ssh-key"
