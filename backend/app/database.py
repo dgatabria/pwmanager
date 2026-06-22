@@ -30,5 +30,6 @@ async def init_db():
     from app.models.user_group import UserGroup
     from app.models.secret_group_member import SecretGroupMember
     from app.models.audit_log import AuditLog
+    from app.models.api_token import APIToken
 
     await engine.create_all()

@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.secret import Secret, SecretType
 from app.models.secret_group import SecretGroup
+from app.models.secret_group_member import SecretGroupMember
 from app.models.user_group import UserGroup
 from app.schemas.secret import (
     SSHKeyGenerateRequest,
@@ -25,37 +26,28 @@ from app.schemas.secret import (
 from app.services.encryption import EncryptionService
 from app.services.audit import AuditService
 from app.utils.security import SecurityUtils
+from app.routers.api_tokens import get_current_user
 
 router = APIRouter(prefix="/api/secrets", tags=["Secrets"])
 
 
-async def get_current_user(authorization: Annotated[str | None, Query()] = None):
-    """Dependency to get current user from JWT token."""
-    from app.services.auth import AuthService
-
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    token = authorization.split(" ", 1)[1]
-    try:
-        payload = AuthService.decode_token(token)
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return int(user_id)
-    except (ValueError, Exception):
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-
-UserDep = Annotated[int, Depends(get_current_user)]
+UserDep = Annotated[dict, Depends(get_current_user)]
 
 
 async def check_secret_access(
     secret_id: int,
     user_id: int,
     db: AsyncSession,
+    permission: str = "read",
 ):
-    """Check if user has access to a secret via their groups."""
+    """Check if user has access to a secret via their groups.
+    
+    Args:
+        secret_id: The secret ID to check
+        user_id: The user ID
+        db: Database session
+        permission: Required permission level ("read" or "write")
+    """
     result = await db.execute(
         select(Secret)
         .where(Secret.id == secret_id, Secret.is_active == True)
@@ -66,38 +58,56 @@ async def check_secret_access(
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
 
+    # Check if user is owner (owner always has full access)
+    if secret.owner_id == user_id:
+        return secret
+
     # Check access via secret groups and their associated user groups
     result = await db.execute(
-        select(UserGroup)
-        .join(SecretGroup, UserGroup.group_id == SecretGroup.group_id)
-        .join(
-            SecretGroup,
-            SecretGroup.id == Secret.id,
-        )
+        select(SecretGroupMember)
+        .join(SecretGroup, SecretGroupMember.secret_group_id == SecretGroup.id)
+        .join(UserGroup, UserGroup.group_id == SecretGroupMember.group_id)
         .where(
             UserGroup.user_id == user_id,
             SecretGroup.id == secret.group_id,
+            SecretGroupMember.permission == "read",
         )
     )
-    user_groups = result.scalars().all()
+    read_access = result.scalars().all()
 
-    if not user_groups:
-        # Also check if user is owner
-        if secret.owner_id != user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+    if permission == "read" and read_access:
+        return secret
 
-    return secret
+    # Check for write access
+    if permission == "write":
+        result = await db.execute(
+            select(SecretGroupMember)
+            .join(SecretGroup, SecretGroupMember.secret_group_id == SecretGroup.id)
+            .join(UserGroup, UserGroup.group_id == SecretGroupMember.group_id)
+            .where(
+                UserGroup.user_id == user_id,
+                SecretGroup.id == secret.group_id,
+                SecretGroupMember.permission == "write",
+            )
+        )
+        write_access = result.scalars().all()
+        if write_access:
+            return secret
+
+    raise HTTPException(status_code=403, detail="Access denied")
 
 
 @router.get("")
 async def list_secrets(
-    user_id: UserDep,
+    user_info: UserDep,
     db: AsyncSession = Depends(get_db),
     group_id: int | None = Query(None),
     search: str | None = Query(None),
     secret_type: str | None = Query(None),
 ):
     """List secrets accessible to the current user."""
+    user_id = user_info["id"]
+
     query = (
         select(
             Secret.id,
@@ -147,17 +157,21 @@ async def list_secrets(
 @router.get("/{secret_id}", response_model=SecretViewResponse)
 async def get_secret(
     secret_id: int,
-    user_id: UserDep,
+    user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single secret with decrypted data."""
-    secret = await check_secret_access(secret_id, user_id, db)
+    user_id = user_info["id"]
+    secret = await check_secret_access(secret_id, user_id, db, permission="read")
 
     # Decrypt the data
     decrypted_data = EncryptionService.decrypt(secret.encrypted_data)
 
-    # Get group name
+    # Get group name and owner username
     group_name = secret.group.name if secret.group else None
+    owner_username = None
+    if secret.owner:
+        owner_username = secret.owner.username
 
     return SecretViewResponse(
         id=secret.id,
@@ -169,7 +183,7 @@ async def get_secret(
         username=secret.username,
         url=secret.url,
         group_name=group_name,
-        owner_username=None,
+        owner_username=owner_username,
         is_active=secret.is_active,
         created_at=str(secret.created_at),
         updated_at=str(secret.updated_at),
@@ -179,17 +193,22 @@ async def get_secret(
 @router.post("", response_model=SecretResponse, status_code=201)
 async def create_secret(
     secret_data: SecretCreate,
-    user_id: UserDep,
+    user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new secret."""
-    # Verify group exists and user has access
+    user_id = user_info["id"]
+
+    # Verify group exists
     result = await db.execute(
         select(SecretGroup).where(SecretGroup.id == secret_data.group_id)
     )
     group = result.scalar_one_or_none()
     if not group:
         raise HTTPException(status_code=404, detail="Secret group not found")
+
+    # Check write access to the group
+    await check_secret_access(secret_data.group_id, user_id, db, permission="write")
 
     secret = Secret(
         title=secret_data.title,
@@ -227,17 +246,12 @@ async def create_secret(
 async def update_secret(
     secret_id: int,
     secret_data: SecretUpdate,
-    user_id: UserDep,
+    user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
     """Update a secret."""
-    result = await db.execute(
-        select(Secret).where(Secret.id == secret_id)
-    )
-    secret = result.scalar_one_or_none()
-
-    if not secret or not secret.is_active:
-        raise HTTPException(status_code=404, detail="Secret not found")
+    user_id = user_info["id"]
+    secret = await check_secret_access(secret_id, user_id, db, permission="write")
 
     if secret_data.title is not None:
         secret.title = secret_data.title
@@ -275,10 +289,13 @@ async def update_secret(
 @router.delete("/{secret_id}", status_code=204)
 async def delete_secret(
     secret_id: int,
-    user_id: UserDep,
+    user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
     """Soft delete a secret."""
+    user_id = user_info["id"]
+    await check_secret_access(secret_id, user_id, db, permission="write")
+
     result = await db.execute(
         select(Secret).where(Secret.id == secret_id)
     )
@@ -294,10 +311,11 @@ async def delete_secret(
 @router.post("/ssh-key/generate", response_model=SSHKeyGenerateResponse)
 async def generate_ssh_key(
     request: SSHKeyGenerateRequest,
-    user_id: UserDep,
+    user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
     """Generate an SSH key pair."""
+    user_id = user_info["id"]
     private_key, public_key, fingerprint = SecurityUtils.generate_ssh_key(
         request.key_length, request.comment
     )
@@ -313,11 +331,12 @@ async def generate_ssh_key(
 @router.get("/{secret_id}/masked", response_model=SecretMaskedResponse)
 async def get_secret_masked(
     secret_id: int,
-    user_id: UserDep,
+    user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
     """Get a secret with masked data (asterisks). No audit event."""
-    secret = await check_secret_access(secret_id, user_id, db)
+    user_id = user_info["id"]
+    secret = await check_secret_access(secret_id, user_id, db, permission="read")
 
     # Get group name and owner username
     group_name = secret.group.name if secret.group else None
@@ -345,12 +364,13 @@ async def get_secret_masked(
 @router.get("/{secret_id}/reveal", response_model=SecretRevealResponse)
 async def reveal_secret(
     secret_id: int,
-    user_id: UserDep,
+    user_info: UserDep,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
     """Reveal secret data with full audit logging."""
-    secret = await check_secret_access(secret_id, user_id, db)
+    user_id = user_info["id"]
+    secret = await check_secret_access(secret_id, user_id, db, permission="read")
 
     # Decrypt the data
     decrypted_data = EncryptionService.decrypt(secret.encrypted_data)
@@ -395,12 +415,13 @@ async def reveal_secret(
 @router.post("/{secret_id}/copy", response_model=SecretCopyResponse)
 async def copy_secret(
     secret_id: int,
-    user_id: UserDep,
+    user_info: UserDep,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
     """Copy secret data to clipboard with full audit logging."""
-    secret = await check_secret_access(secret_id, user_id, db)
+    user_id = user_info["id"]
+    secret = await check_secret_access(secret_id, user_id, db, permission="read")
 
     # Decrypt the data
     decrypted_data = EncryptionService.decrypt(secret.encrypted_data)

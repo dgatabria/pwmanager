@@ -1,4 +1,5 @@
 export type SecretType = 'ssh_key' | 'password' | 'credential' | 'api_key' | 'custom'
+export type GroupPermission = 'read' | 'write'
 
 export interface Secret {
   id: number
@@ -62,6 +63,36 @@ export interface SecretCopy {
   audit_event: string
   audit_timestamp: string
   audit_ip: string
+}
+
+export interface APIToken {
+  id: number
+  name: string
+  description: string | null
+  is_active: boolean
+  created_at: string
+  last_used_at: string | null
+  expires_at: string | null
+}
+
+export interface APITokenCreateResponse {
+  token: string
+  token_id: number
+  name: string
+  description: string | null
+  created_at: string
+  expires_at: string | null
+  warning: string
+}
+
+export interface APITokenRecycleResponse {
+  new_token: string
+  warning: string
+}
+
+export interface APITokenRevokeResponse {
+  message: string
+  revoked_token_id: number
 }
 
 export interface SecretGroup {

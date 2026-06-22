@@ -37,6 +37,9 @@ class User(Base):
     audit_logs: Mapped[list["AuditLog"]] = relationship(
         back_populates="user", lazy="selectin"
     )
+    api_tokens: Mapped[list["APIToken"]] = relationship(
+        back_populates="user", lazy="selectin"
+    )
 
     def __repr__(self) -> str:
         return f"<User {self.username}>"
