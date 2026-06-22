@@ -14,16 +14,30 @@ class LoginRequest(BaseModel):
 
 
 class UserCreate(BaseModel):
+    """Schema for regular user registration."""
     username: str
     email: EmailStr
     password: str
     full_name: str | None = None
 
 
+class AdminUserCreate(BaseModel):
+    """Schema for admin user creation."""
+    username: str
+    email: EmailStr
+    full_name: str | None = None
+    is_active: bool = True
+    is_superuser: bool = False
+
+
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
     full_name: str | None = None
     is_active: bool | None = None
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str
 
 
 class UserResponse(BaseModel):

@@ -19,10 +19,11 @@ class GroupResponse(BaseModel):
     name: str
     description: str | None
     is_active: bool
+    user_ids: list[int] = []
 
     class Config:
         from_attributes = True
 
 
 class GroupDetail(GroupResponse):
-    user_ids: list[int] = []
+    pass

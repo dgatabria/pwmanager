@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.routers.admin import router as admin_router
 from app.routers.api_tokens import router as api_tokens_router
 from app.routers.auth import router as auth_router
 from app.routers.groups import router as groups_router
@@ -52,6 +53,7 @@ app.add_middleware(
 
 # Register routers
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(api_tokens_router)
 app.include_router(groups_router)
 app.include_router(secret_groups_router)
