@@ -17,16 +17,28 @@ interface BackupInfo {
   backup_id?: string
 }
 
+interface RotationResult {
+  message: string
+  secrets_processed: number
+  secrets_failed: number
+  total_secrets: number
+  status: string
+  timestamp?: string
+}
+
 export default function AdminBackupRecovery() {
   const [status, setStatus] = useState<BackupStatus | null>(null)
   const [backups, setBackups] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [executing, setExecuting] = useState(false)
   const [restoring, setRestoring] = useState(false)
+  const [rotating, setRotating] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [showRestoreModal, setShowRestoreModal] = useState(false)
   const [backupIdToRestore, setBackupIdToRestore] = useState('')
+  const [showRotationModal, setShowRotationModal] = useState(false)
+  const [rotationResult, setRotationResult] = useState<RotationResult | null>(null)
 
   const fetchData = async () => {
     setLoading(true)
@@ -88,10 +100,28 @@ export default function AdminBackupRecovery() {
     }
   }
 
+  const handleRotateKey = async () => {
+    if (!confirm('⚠️ WARNING: This will put the application in maintenance mode and re-encrypt all secrets. This may take several minutes. Continue?')) return
+    setRotating(true)
+    setError('')
+    setSuccess('')
+    setRotationResult(null)
+    try {
+      const result = await api.post<RotationResult>('/api/admin/secrets/rotate-key', {})
+      setRotationResult(result)
+      setSuccess(result.message || 'Key rotation executed successfully')
+      await fetchData()
+    } catch (err: any) {
+      setError(err.message || 'Failed to rotate key')
+    } finally {
+      setRotating(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Backup & Recovery</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Mantenimiento</h1>
         <button
           onClick={fetchData}
           className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition flex items-center gap-2"
@@ -182,6 +212,32 @@ export default function AdminBackupRecovery() {
         </div>
       </div>
 
+      {/* Encryption Key Rotation */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Encryption Key Management</h2>
+        
+        <div className="space-y-4">
+          <div className="flex items-start gap-4 p-4 bg-purple-50 rounded-lg">
+            <svg className="w-6 h-6 text-purple-600 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.227-2.573 4.018-2.007 2.46.677 3.138 3.868 1.386 5.62-.778.778-1.266 1.81-1.266 2.896 0 2.762 2.238 5 5 5 .902 0 1.734-.302 2.396-.806 1.752-1.752 1.074-4.943-1.386-5.62-1.792-.546-3.593.249-4.018 2.007-.294 1.21.058 2.363.768 3.217" />
+            </svg>
+            <div className="flex-1">
+              <h3 className="font-medium text-purple-900">Rotate Encryption Key</h3>
+              <p className="text-sm text-purple-700 mt-1">
+                Generate a new encryption key and re-encrypt all secrets. This will put the application in maintenance mode temporarily.
+              </p>
+              <button
+                onClick={() => setShowRotationModal(true)}
+                disabled={rotating}
+                className="mt-3 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
+              >
+                {rotating ? 'Rotating...' : 'Rotate Encryption Key'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Backup List */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Available Backups</h2>
@@ -258,6 +314,102 @@ export default function AdminBackupRecovery() {
                   className="px-4 py-2 text-sm text-white bg-red-600 rounded-lg hover:bg-red-700"
                 >
                   Confirm Restore
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rotation Confirmation Modal */}
+      {showRotationModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.227-2.573 4.018-2.007 2.46.677 3.138 3.868 1.386 5.62-.778.778-1.266 1.81-1.266 2.896 0 2.762 2.238 5 5 5 .902 0 1.734-.302 2.396-.806 1.752-1.752 1.074-4.943-1.386-5.62-1.792-.546-3.593.249-4.018 2.007-.294 1.21.058 2.363.768 3.217" />
+              </svg>
+              <h2 className="text-xl font-bold text-gray-900">Confirm Key Rotation</h2>
+            </div>
+            <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg mb-4">
+              <p className="text-sm text-purple-800 font-medium">
+                ⚠️ This will put the application in maintenance mode and re-encrypt all secrets. Non-admin users will be locked out during this process. This may take several minutes.
+              </p>
+            </div>
+            <div className="space-y-4">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-600">
+                  <strong>What happens:</strong>
+                </p>
+                <ul className="text-sm text-gray-600 mt-1 list-disc list-inside space-y-1">
+                  <li>Maintenance mode is activated</li>
+                  <li>All secrets are decrypted with the old key</li>
+                  <li>Secrets are re-encrypted with a new key</li>
+                  <li>The new key is saved to disk</li>
+                  <li>Maintenance mode is deactivated</li>
+                </ul>
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowRotationModal(false)}
+                  className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRotateKey}
+                  className="px-4 py-2 text-sm text-white bg-purple-600 rounded-lg hover:bg-purple-700"
+                >
+                  Start Rotation
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rotation Result Modal */}
+      {rotationResult && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg m-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h2 className="text-xl font-bold text-gray-900">Key Rotation Complete</h2>
+            </div>
+            <div className="space-y-4">
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-green-800 font-medium">{rotationResult.message}</p>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-900">{rotationResult.secrets_processed}</div>
+                  <div className="text-sm text-gray-500">Processed</div>
+                </div>
+                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-900">{rotationResult.secrets_failed}</div>
+                  <div className="text-sm text-gray-500">Failed</div>
+                </div>
+                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-900">{rotationResult.total_secrets}</div>
+                  <div className="text-sm text-gray-500">Total</div>
+                </div>
+              </div>
+              {rotationResult.timestamp && (
+                <p className="text-xs text-gray-500 text-center">
+                  Completed at: {new Date(rotationResult.timestamp).toLocaleString()}
+                </p>
+              )}
+              <div className="flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowRotationModal(false)
+                    setRotationResult(null)
+                  }}
+                  className="px-4 py-2 text-sm text-white bg-purple-600 rounded-lg hover:bg-purple-700"
+                >
+                  Close
                 </button>
               </div>
             </div>

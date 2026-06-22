@@ -26,6 +26,22 @@ app = FastAPI(
 # Rate limiter dependency
 app.state.limiter = limiter
 
+# ─── Maintenance Mode ───────────────────────────────────────────────
+# Global flag: when True, blocks non-admin login and normal API access.
+# Used during encryption key rotation to prevent data corruption.
+_maintenance_mode: bool = False
+
+
+def set_maintenance_mode(active: bool) -> None:
+    """Enable or disable maintenance mode."""
+    global _maintenance_mode
+    _maintenance_mode = active
+
+
+def is_maintenance_mode() -> bool:
+    """Check if the application is in maintenance mode."""
+    return _maintenance_mode
+
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):

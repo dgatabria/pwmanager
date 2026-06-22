@@ -6,11 +6,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
+from app.main import set_maintenance_mode, is_maintenance_mode
 from app.models.user import User
 from app.models.group import Group
 from app.models.user_group import UserGroup
 from app.models.saml_config import SAMLConfig
+from app.models.secret import Secret
 from app.schemas.auth import (
     UserResponse,
     UserUpdate,
@@ -22,6 +25,7 @@ from app.schemas.auth import (
     SAMLConfigUpdate,
 )
 from app.schemas.group import GroupCreate, GroupResponse, GroupUpdate
+from app.services.encryption import EncryptionService
 from app.utils.security import SecurityUtils
 from app.routers.auth import get_current_user
 
@@ -677,3 +681,98 @@ async def admin_update_saml_config(
         slo_redirect_url=config.slo_redirect_url,
         certificate_label=config.certificate_label,
     )
+
+
+# ─── Encryption Key Rotation ────────────────────────────────────────
+
+@router.post("/secrets/rotate-key", response_model=dict)
+async def admin_rotate_encryption_key(
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Rotate the encryption key used to encrypt all secrets.
+
+    This operation:
+    1. Puts the app in maintenance mode (blocks non-admin login)
+    2. Generates a new encryption key
+    3. Decrypts all secrets with the old key
+    4. Re-encrypts them with the new key
+    5. Persists the new key to disk
+    6. Exits maintenance mode
+
+    WARNING: This operation may take several minutes for large databases.
+    """
+    await require_superuser(current_user_id, db)
+
+    # Put app in maintenance mode
+    set_maintenance_mode(True)
+
+    try:
+        # Get all active secrets
+        result = await db.execute(select(Secret).where(Secret.is_active == True))
+        all_secrets = result.scalars().all()
+
+        if not all_secrets:
+            set_maintenance_mode(False)
+            return {
+                "message": "Key rotation completed (no secrets to re-encrypt)",
+                "secrets_processed": 0,
+                "status": "completed",
+            }
+
+        total = len(all_secrets)
+        processed = 0
+        failed = 0
+
+        for secret in all_secrets:
+            try:
+                # Decrypt with current (old) key
+                decrypted_data = EncryptionService.decrypt(secret.encrypted_data)
+
+                # Re-encrypt with new key
+                new_encrypted = EncryptionService.encrypt(decrypted_data)
+
+                # Update in database
+                secret.encrypted_data = new_encrypted
+                processed += 1
+            except Exception as e:
+                failed += 1
+                # Log but continue processing other secrets
+                import logging
+                logging.error(f"Failed to re-encrypt secret {secret.id}: {e}")
+
+        await db.commit()
+
+        # Exit maintenance mode
+        set_maintenance_mode(False)
+
+        return {
+            "message": "Key rotation completed successfully",
+            "secrets_processed": processed,
+            "secrets_failed": failed,
+            "total_secrets": total,
+            "status": "completed",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    except Exception as e:
+        # Ensure maintenance mode is exited even on error
+        set_maintenance_mode(False)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Key rotation failed: {str(e)}",
+        )
+
+
+@router.get("/secrets/rotation-status", response_model=dict)
+async def admin_rotation_status(
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the current maintenance mode status."""
+    await require_superuser(current_user_id, db)
+
+    return {
+        "maintenance_mode": is_maintenance_mode(),
+        "message": "System is in maintenance mode" if is_maintenance_mode() else "System is operational",
+    }

@@ -9,7 +9,7 @@ import AdminAuthMethod from '../components/AdminAuthMethod'
 export default function AdminDashboard() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'users' | 'backup' | 'auth'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'maintenance' | 'auth'>('users')
 
   const handleLogout = () => {
     logout()
@@ -63,16 +63,16 @@ export default function AdminDashboard() {
               </span>
             </button>
             <button
-              onClick={() => setActiveTab('backup')}
+              onClick={() => setActiveTab('maintenance')}
               className={`px-4 py-2 rounded-lg font-medium transition ${
-                activeTab === 'backup' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
+                activeTab === 'maintenance' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
               }`}
             >
               <span className="flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.227-2.573 4.018-2.007 2.46.677 3.138 3.868 1.386 5.62-.778.778-1.266 1.81-1.266 2.896 0 2.762 2.238 5 5 5 .902 0 1.734-.302 2.396-.806 1.752-1.752 1.074-4.943-1.386-5.62-1.792-.546-3.593.249-4.018 2.007-.294 1.21.058 2.363.768 3.217" />
                 </svg>
-                Backup & Recovery
+                Mantenimiento
               </span>
             </button>
             <button
@@ -94,7 +94,7 @@ export default function AdminDashboard() {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'users' && <UserManagement />}
-          {activeTab === 'backup' && <BackupRecovery />}
+          {activeTab === 'maintenance' && <BackupRecovery />}
           {activeTab === 'auth' && <AdminAuthMethod />}
         </div>
       </div>

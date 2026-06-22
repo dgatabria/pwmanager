@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.main import is_maintenance_mode
 from app.models.user import User
 from app.schemas.auth import LoginRequest, Token, UserCreate, UserResponse
 from app.services.auth import AuthService
@@ -75,6 +76,7 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT token.
     
     Rate limited to prevent brute force attacks.
+    During maintenance mode, only superusers can log in.
     """
     result = await db.execute(select(User).where(User.username == request.username))
     user = result.scalar_one_or_none()
@@ -90,6 +92,13 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is disabled",
+        )
+
+    # During maintenance mode, only superusers can log in
+    if is_maintenance_mode() and not user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service is temporarily unavailable. Maintenance in progress.",
         )
 
     token = AuthService.create_access_token(data={"sub": str(user.id)})
