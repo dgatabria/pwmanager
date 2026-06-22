@@ -15,6 +15,7 @@ interface AuthContextType {
   logout: () => void
   isAuthenticated: boolean
   isSuperuser: boolean
+  isLoading: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -22,24 +23,54 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'))
   const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
+  // Fetch user info from server to verify token and get accurate role info
   useEffect(() => {
     if (token) {
-      // Decode JWT to get user info (simple decode, not verified)
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]))
-        setUser({
-          id: parseInt(payload.sub),
-          username: 'user',
-          email: '',
-          full_name: '',
-          is_superuser: false,
-        })
-      } catch {
-        // Token decode failed, will be handled by API calls
-      }
+      fetchUserInfo()
+    } else {
+      setUser(null)
     }
   }, [token])
+
+  const fetchUserInfo = async () => {
+    if (!token) {
+      setUser(null)
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/auth/me', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        // Token is invalid or expired
+        logout()
+        return
+      }
+
+      const data = await response.json()
+      setUser({
+        id: data.id,
+        username: data.username,
+        email: data.email,
+        full_name: data.full_name,
+        is_superuser: data.is_superuser,
+      })
+    } catch {
+      // Network error, token will be invalidated on next API call
+      setUser(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const login = async (username: string, password: string) => {
     const response = await fetch('/api/auth/login', {
@@ -65,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ token, user, login, logout, isAuthenticated: !!token, isSuperuser: !!user?.is_superuser }}>
+    <AuthContext.Provider value={{ token, user, login, logout, isAuthenticated: !!token, isSuperuser: !!user?.is_superuser, isLoading }}>
       {children}
     </AuthContext.Provider>
   )

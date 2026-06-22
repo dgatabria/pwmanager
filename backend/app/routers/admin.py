@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.group import Group
 from app.models.user_group import UserGroup
+from app.models.saml_config import SAMLConfig
 from app.schemas.auth import (
     UserResponse,
     UserUpdate,
@@ -547,23 +548,10 @@ async def admin_backup_restore(
 
 # ─── Authentication Method Configuration ────────────────────────────
 
-# In-memory store for auth method configuration (replace with DB in production)
+# In-memory store for auth method configuration (persisted separately from SAML)
 _auth_method_config: dict = {
     "auth_method": "local",
     "saml_enabled": False,
-}
-
-_saml_config: dict = {
-    "saml_enabled": False,
-    "entity_id": None,
-    "sso_url": None,
-    "idp_metadata_url": None,
-    "acs_url": None,
-    "certificate": None,
-    "entity_id_label": None,
-    "slo_url": None,
-    "slo_redirect_url": None,
-    "certificate_label": None,
 }
 
 
@@ -610,10 +598,28 @@ async def admin_get_saml_config(
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get the SAML configuration (superuser only)."""
+    """Get the SAML configuration from database (superuser only)."""
     await require_superuser(current_user_id, db)
     
-    return SAMLConfigResponse(**_saml_config)
+    result = await db.execute(select(SAMLConfig))
+    config = result.scalar_one_or_none()
+    
+    if config is None:
+        # Return empty config if not yet created
+        return SAMLConfigResponse(saml_enabled=False)
+    
+    return SAMLConfigResponse(
+        saml_enabled=config.saml_enabled,
+        entity_id=config.entity_id,
+        sso_url=config.sso_url,
+        idp_metadata_url=config.idp_metadata_url,
+        acs_url=config.acs_url,
+        certificate=config.certificate,
+        entity_id_label=config.entity_id_label,
+        slo_url=config.slo_url,
+        slo_redirect_url=config.slo_redirect_url,
+        certificate_label=config.certificate_label,
+    )
 
 
 @router.put("/auth/saml", response_model=SAMLConfigResponse)
@@ -622,20 +628,52 @@ async def admin_update_saml_config(
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update the SAML configuration (superuser only)."""
+    """Update the SAML configuration in the database (superuser only)."""
     await require_superuser(current_user_id, db)
     
-    _saml_config.update({
-        "saml_enabled": update.saml_enabled,
-        "entity_id": update.entity_id,
-        "sso_url": update.sso_url,
-        "idp_metadata_url": update.idp_metadata_url,
-        "acs_url": update.acs_url,
-        "certificate": update.certificate,
-        "entity_id_label": update.entity_id_label,
-        "slo_url": update.slo_url,
-        "slo_redirect_url": update.slo_redirect_url,
-        "certificate_label": update.certificate_label,
-    })
+    result = await db.execute(select(SAMLConfig))
+    config = result.scalar_one_or_none()
     
-    return SAMLConfigResponse(**_saml_config)
+    if config is None:
+        # Create new config
+        config = SAMLConfig(
+            saml_enabled=update.saml_enabled,
+            entity_id=update.entity_id,
+            sso_url=update.sso_url,
+            idp_metadata_url=update.idp_metadata_url,
+            acs_url=update.acs_url,
+            certificate=update.certificate,
+            entity_id_label=update.entity_id_label,
+            slo_url=update.slo_url,
+            slo_redirect_url=update.slo_redirect_url,
+            certificate_label=update.certificate_label,
+        )
+        db.add(config)
+    else:
+        # Update existing config
+        config.saml_enabled = update.saml_enabled
+        config.entity_id = update.entity_id
+        config.sso_url = update.sso_url
+        config.idp_metadata_url = update.idp_metadata_url
+        config.acs_url = update.acs_url
+        config.certificate = update.certificate
+        config.entity_id_label = update.entity_id_label
+        config.slo_url = update.slo_url
+        config.slo_redirect_url = update.slo_redirect_url
+        config.certificate_label = update.certificate_label
+    
+    await db.commit()
+    await db.refresh(config)
+    
+    return SAMLConfigResponse(
+        saml_enabled=config.saml_enabled,
+        entity_id=config.entity_id,
+        sso_url=config.sso_url,
+        idp_metadata_url=config.idp_metadata_url,
+        acs_url=config.acs_url,
+        certificate=config.certificate,
+        entity_id_label=config.entity_id_label,
+        slo_url=config.slo_url,
+        slo_redirect_url=config.slo_redirect_url,
+        certificate_label=config.certificate_label,
+    )

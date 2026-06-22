@@ -314,8 +314,29 @@ async def generate_ssh_key(
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate an SSH key pair."""
+    """Generate an SSH key pair.
+    
+    Key length is validated to prevent DoS attacks (2048-8192 bits).
+    Comment is limited to 100 characters.
+    """
     user_id = user_info["id"]
+    
+    # Validate key_length to prevent resource exhaustion
+    min_key_length = 2048
+    max_key_length = 8192
+    if request.key_length < min_key_length or request.key_length > max_key_length:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Key length must be between {min_key_length} and {max_key_length} bits",
+        )
+    
+    # Validate comment length
+    if len(request.comment) > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Comment must not exceed 100 characters",
+        )
+    
     private_key, public_key, fingerprint = SecurityUtils.generate_ssh_key(
         request.key_length, request.comment
     )
