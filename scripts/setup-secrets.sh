@@ -3,7 +3,6 @@
 # Usage: ./scripts/setup-secrets.sh
 #
 # This script creates:
-#   - secrets/*.txt        (Docker secrets)
 #   - backend/secrets/*.txt (Local development secrets)
 #   - .env.db              (Database env file)
 #   - .env.backend         (Backend env file)
@@ -18,20 +17,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 echo "🔐 Generating secrets for ia-tests-2..."
 
 # Create directories
-mkdir -p "$SCRIPT_DIR/secrets"
 mkdir -p "$SCRIPT_DIR/backend/secrets"
 
 # Generate secrets
 echo "  - postgres_password"
-openssl rand -hex 32 > "$SCRIPT_DIR/secrets/postgres_password.txt"
 openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/postgres_password.txt"
 
 echo "  - secret_key (JWT)"
-openssl rand -hex 32 > "$SCRIPT_DIR/secrets/secret_key.txt"
 openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/secret_key.txt"
 
 echo "  - encryption_key (Fernet)"
-openssl rand -base64 32 > "$SCRIPT_DIR/secrets/encryption_key.txt"
 openssl rand -base64 32 > "$SCRIPT_DIR/backend/secrets/encryption_key.txt"
 
 # Create .env.db
@@ -55,7 +50,7 @@ echo ""
 echo "✅ Secrets generated successfully!"
 echo ""
 echo "Next steps:"
-echo "  1. Review the generated files in secrets/ and backend/secrets/"
+echo "  1. Review the generated files in backend/secrets/"
 echo "  2. Ensure .env.db and .env.backend are NOT committed to version control"
 echo "  3. Run docker-compose up to start the application"
 echo ""

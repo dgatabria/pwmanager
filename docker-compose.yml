@@ -3,8 +3,6 @@ services:
     image: postgres:16-alpine
     env_file:
       - .env.db
-    secrets:
-      - postgres_password
     ports:
       - "5432:5432"
     volumes:
@@ -22,23 +20,11 @@ services:
       - "8000:8000"
     env_file:
       - .env.backend
-    secrets:
-      - postgres_password
-      - secret_key
-      - encryption_key
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - encryption_key:/app/app
-
-secrets:
-  postgres_password:
-    file: ./secrets/postgres_password.txt
-  secret_key:
-    file: ./secrets/secret_key.txt
-  encryption_key:
-    file: ./secrets/encryption_key.txt
 
 volumes:
   pgdata:

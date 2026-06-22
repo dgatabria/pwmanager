@@ -42,8 +42,7 @@ Thumbs.db
 .encryption_key
 backend/.encryption_key
 
-# Docker secrets (contain plaintext secrets)
-secrets/*.txt
+# Local development secrets (contain plaintext secrets)
 backend/secrets/*.txt
 
 # RSA keys generated at runtime
