@@ -2,6 +2,7 @@
 
 > **Scope**: Full codebase scan (backend Python/FastAPI + frontend React/Vite + Docker Compose)
 > **Date**: 2026-06-22
+> **Status**: Patched (commit `d736ff8`)
 > **Severity**: Critical → High → Medium → Low
 
 ---
