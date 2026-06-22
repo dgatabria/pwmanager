@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,13 +17,14 @@ from app.schemas.api_token import (
     APITokenRevokeResponse,
 )
 from app.services.api_token import APITokenService
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/api-tokens", tags=["API Tokens"])
 
 
-async def get_current_user(
-    authorization: Annotated[str | None, Query()] = None,
-    x_api_key: Annotated[str | None, Query()] = None,
+async def get_current_user_with_api_key(
+    authorization: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Header()] = None,
     request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
@@ -35,7 +36,7 @@ async def get_current_user(
     user_id = None
     user_info = None
 
-    # Try JWT token first
+    # Try JWT token first (standard Bearer token)
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1]
         try:
@@ -67,7 +68,7 @@ async def get_current_user(
     return user_info
 
 
-UserDep = Annotated[dict, Depends(get_current_user)]
+UserDep = Annotated[dict, Depends(get_current_user_with_api_key)]
 
 
 @router.get("")

@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,27 +15,9 @@ from app.schemas.secret_group import (
     SecretGroupResponse,
     SecretGroupUpdate,
 )
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/secret-groups", tags=["Secret Groups"])
-
-
-async def get_current_user(authorization: Annotated[str | None, Query()] = None):
-    """Dependency to get current user from JWT token."""
-    from app.services.auth import AuthService
-
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    token = authorization.split(" ", 1)[1]
-    try:
-        payload = AuthService.decode_token(token)
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return int(user_id)
-    except (ValueError, Exception):
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
 
 UserDep = Annotated[int, Depends(get_current_user)]
 

@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,28 +12,11 @@ from app.models.user import User
 from app.models.user_group import UserGroup
 from app.schemas.group import GroupCreate, GroupDetail, GroupResponse, GroupUpdate
 from app.schemas.auth import UserResponse
+from app.services.auth import AuthService
 from app.utils.security import SecurityUtils
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api", tags=["Groups & Users"])
-
-
-async def get_current_user(authorization: Annotated[str | None, Query()] = None):
-    """Dependency to get current user from JWT token."""
-    from app.services.auth import AuthService
-
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    token = authorization.split(" ", 1)[1]
-    try:
-        payload = AuthService.decode_token(token)
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return int(user_id)
-    except (ValueError, Exception):
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
 
 UserDep = Annotated[int, Depends(get_current_user)]
 
@@ -42,7 +25,7 @@ UserDep = Annotated[int, Depends(get_current_user)]
 
 @router.get("/users", response_model=list[UserResponse])
 async def list_users(user_id: UserDep, db: AsyncSession = Depends(get_db)):
-    """List all users."""
+    """List all users (requires authentication)."""
     result = await db.execute(select(User).order_by(User.username))
     users = result.scalars().all()
     return [
@@ -62,15 +45,41 @@ async def list_users(user_id: UserDep, db: AsyncSession = Depends(get_db)):
 @router.post("/users", response_model=UserResponse, status_code=201)
 async def create_user(
     user_data: UserResponse,
-    user_id: UserDep,
+    current_user_id: UserDep,
+    authorization: Annotated[str | None, Header()] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new user (admin only)."""
+    """Create a new user (superuser only).
+    
+    Requires superuser privileges to prevent unauthorized user creation.
+    Random password is generated and must be changed on first login.
+    """
+    # Verify caller is superuser
+    result = await db.execute(select(User).where(User.id == current_user_id))
+    current_user = result.scalar_one_or_none()
+    
+    if not current_user or not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superuser privileges required to create users",
+        )
+
+    # Check if username exists
     result = await db.execute(select(User).where(User.username == user_data.username))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    hashed = SecurityUtils.hash_password("default_password_123")
+    # Check if email exists
+    result = await db.execute(select(User).where(User.email == user_data.email))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already exists")
+
+    # Generate random password (user must change on first login)
+    import secrets
+    import string
+    random_password = ''.join(secrets.choice(string.ascii_letters + string.digits + string.punctuation) for _ in range(20))
+    hashed = SecurityUtils.hash_password(random_password)
+    
     user = User(
         username=user_data.username,
         email=user_data.email,

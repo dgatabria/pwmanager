@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -26,7 +26,7 @@ from app.schemas.secret import (
 from app.services.encryption import EncryptionService
 from app.services.audit import AuditService
 from app.utils.security import SecurityUtils
-from app.routers.api_tokens import get_current_user
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/secrets", tags=["Secrets"])
 
