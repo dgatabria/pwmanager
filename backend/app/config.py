@@ -1,18 +1,20 @@
 """Application configuration."""
 
 import os
+import sys
 from typing import List
 
 from pydantic_settings import BaseSettings
 
 
-def _read_secret(secret_name: str, default: str) -> str:
-    """Read a secret value.
+def _read_secret(secret_name: str) -> str | None:
+    """Read a secret value from environment variable or Docker secrets.
 
     Priority:
     1. Environment variable (same name as secret_name, uppercase)
     2. Docker secrets file (/run/secrets/<secret_name>)
-    3. Default value
+
+    Returns None if the secret is not found.
 
     This allows using Docker secrets in production while keeping
     environment variables for local development.
@@ -33,24 +35,38 @@ def _read_secret(secret_name: str, default: str) -> str:
         except OSError:
             pass
 
-    # 3. Return default
-    return default
+    return None
+
+
+def _require_secret(secret_name: str) -> str:
+    """Read a secret and raise an error if it is not configured.
+
+    This ensures that placeholder/default values are never used in production.
+    """
+    value = _read_secret(secret_name)
+    if not value:
+        print(
+            f"ERROR: Required secret '{secret_name}' is not configured. "
+            f"Set the {secret_name} environment variable or provide it via Docker secrets.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return value
 
 
 class Settings(BaseSettings):
     """Application settings."""
 
-    DATABASE_URL: str = _read_secret("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@db:5432/password_manager")
-    SECRET_KEY: str = _read_secret("SECRET_KEY", "change-this-to-a-secure-random-string-in-production")
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
-    ENCRYPTION_KEY: str = _read_secret("ENCRYPTION_KEY", "change-this-to-a-32-byte-base64-encoded-key")
+    DATABASE_URL: str = ""
+    ENCRYPTION_KEY: str = ""
 
     # CORS - comma-separated list of allowed origins (domains)
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:8000"
 
     # Rate limiting - requests per time window
     RATE_LIMIT: str = "5/minute"  # Default: 5 requests per minute for auth endpoints
+
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
     class Config:
         env_file = ".env"
@@ -60,4 +76,10 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
 
+# ─── Startup validation ───────────────────────────────────────────────
+
 settings = Settings()
+
+# Require secrets at startup — never fall back to placeholders
+settings.DATABASE_URL = _require_secret("DATABASE_URL")
+settings.ENCRYPTION_KEY = _require_secret("ENCRYPTION_KEY")

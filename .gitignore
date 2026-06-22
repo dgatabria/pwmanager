@@ -35,6 +35,16 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+.env.db
+.env.backend
 
 # Sensitive generated files
 .encryption_key
+backend/.encryption_key
+
+# Docker secrets (contain plaintext secrets)
+secrets/*.txt
+backend/secrets/*.txt
+
+# RSA keys generated at runtime
+backend/app/utils/keys/

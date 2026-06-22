@@ -2,6 +2,8 @@
 
 import asyncio
 import os
+import secrets
+import string
 
 os.environ.setdefault("SECRET_KEY", "change-this-to-a-secure-random-string-in-production")
 os.environ.setdefault(
@@ -18,6 +20,27 @@ from app.models.user import User
 from app.utils.security import SecurityUtils
 
 
+def _generate_secure_password(length: int = 32) -> str:
+    """Generate a cryptographically secure random password.
+
+    Includes uppercase, lowercase, digits, and special characters.
+    Ensures at least one character from each required category.
+    """
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    # Ensure at least one character from each required category
+    password_chars = [
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.digits),
+        secrets.choice(string.punctuation),
+    ]
+    # Fill remaining length with random characters from full alphabet
+    password_chars += [secrets.choice(alphabet) for _ in range(length - 4)]
+    # Shuffle to avoid predictable positions
+    secrets.SystemRandom().shuffle(password_chars)
+    return "".join(password_chars)
+
+
 async def seed():
     """Create initial admin user and default groups."""
     await init_db()
@@ -31,8 +54,9 @@ async def seed():
             print("Admin user already exists. Skipping seed.")
             return
 
-        # Create admin user
-        hashed = SecurityUtils.hash_password("Admin@123")
+        # Generate a cryptographically secure random password
+        admin_password = _generate_secure_password(32)
+        hashed = SecurityUtils.hash_password(admin_password)
         admin = User(
             username="admin",
             email="admin@company.local",
@@ -42,7 +66,8 @@ async def seed():
         )
         session.add(admin)
         await session.commit()
-        print(f"✓ Created admin user (password: Admin@123)")
+        print(f"✓ Created admin user (password: {admin_password})")
+        print("⚠️  WARNING: Save this password securely. It will not be shown again.")
 
         # Create default groups
         default_groups = [

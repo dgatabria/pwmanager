@@ -21,24 +21,23 @@ class EncryptionService:
         """Load encryption key from persistent storage or generate one.
 
         Priority:
-        1. Environment variable ENCRYPTION_KEY (if set and not placeholder)
+        1. ENCRYPTION_KEY environment variable (set at startup by config)
         2. Persisted key file (read on first call, cached in settings)
         3. Generate new key and persist to file
 
         Raises:
-            RuntimeError: If the default placeholder key is used and no
+            RuntimeError: If no encryption key is configured and no
                 persistent storage is available (e.g., read-only filesystem).
         """
         key = settings.ENCRYPTION_KEY
-        default_placeholder = settings.model_fields["ENCRYPTION_KEY"].default
 
         # If user provided a real key via env var, use it directly
-        if key != default_placeholder:
+        if key:
             return key
 
         # If we already generated and cached a key in this process, use it
         cached_key = settings.ENCRYPTION_KEY
-        if cached_key != default_placeholder:
+        if cached_key:
             return cached_key
 
         # Try to load from persistent file
@@ -61,10 +60,10 @@ class EncryptionService:
             return new_key
         except OSError:
             raise RuntimeError(
-                "Cannot start: encryption key is the default placeholder and "
+                "Cannot start: encryption key is not configured and "
                 "the application cannot persist a new key to disk. "
-                f"Set the ENCRYPTION_KEY environment variable to a valid 32-byte base64-encoded key, "
-                f"or ensure write access to {_ENCRYPTION_KEY_FILE}"
+                f"Set the ENCRYPTION_KEY environment variable to a valid "
+                f"32-byte base64-encoded key, or ensure write access to {_ENCRYPTION_KEY_FILE}"
             )
 
     @staticmethod
