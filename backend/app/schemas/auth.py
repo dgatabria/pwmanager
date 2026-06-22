@@ -51,3 +51,44 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ─── Authentication Method Configuration ────────────────────────────
+
+class AuthMethodResponse(BaseModel):
+    """Response schema for authentication method configuration."""
+    auth_method: str  # 'local' or 'saml'
+    saml_enabled: bool = False
+
+
+class AuthMethodUpdate(BaseModel):
+    """Request schema for updating authentication method."""
+    auth_method: str  # 'local' or 'saml'
+
+
+class SAMLConfigResponse(BaseModel):
+    """Response schema for SAML configuration."""
+    saml_enabled: bool
+    entity_id: str | None = None
+    sso_url: str | None = None
+    idp_metadata_url: str | None = None
+    acs_url: str | None = None
+    certificate: str | None = None
+    entity_id_label: str | None = None
+    slo_url: str | None = None
+    slo_redirect_url: str | None = None
+    certificate_label: str | None = None
+
+
+class SAMLConfigUpdate(BaseModel):
+    """Request schema for updating SAML configuration."""
+    saml_enabled: bool = False
+    entity_id: str | None = None
+    sso_url: str | None = None
+    idp_metadata_url: str | None = None
+    acs_url: str | None = None
+    certificate: str | None = None
+    entity_id_label: str | None = None
+    slo_url: str | None = None
+    slo_redirect_url: str | None = None
+    certificate_label: str | None = None

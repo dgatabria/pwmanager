@@ -10,7 +10,16 @@ from app.database import get_db
 from app.models.user import User
 from app.models.group import Group
 from app.models.user_group import UserGroup
-from app.schemas.auth import UserResponse, UserUpdate, AdminUserCreate, ResetPasswordRequest
+from app.schemas.auth import (
+    UserResponse,
+    UserUpdate,
+    AdminUserCreate,
+    ResetPasswordRequest,
+    AuthMethodResponse,
+    AuthMethodUpdate,
+    SAMLConfigResponse,
+    SAMLConfigUpdate,
+)
 from app.schemas.group import GroupCreate, GroupResponse, GroupUpdate
 from app.utils.security import SecurityUtils
 from app.routers.auth import get_current_user
@@ -534,3 +543,99 @@ async def admin_backup_restore(
     }
     
     return restore_info
+
+
+# ─── Authentication Method Configuration ────────────────────────────
+
+# In-memory store for auth method configuration (replace with DB in production)
+_auth_method_config: dict = {
+    "auth_method": "local",
+    "saml_enabled": False,
+}
+
+_saml_config: dict = {
+    "saml_enabled": False,
+    "entity_id": None,
+    "sso_url": None,
+    "idp_metadata_url": None,
+    "acs_url": None,
+    "certificate": None,
+    "entity_id_label": None,
+    "slo_url": None,
+    "slo_redirect_url": None,
+    "certificate_label": None,
+}
+
+
+@router.get("/auth/method", response_model=AuthMethodResponse)
+async def admin_get_auth_method(
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the current authentication method configuration (superuser only)."""
+    await require_superuser(current_user_id, db)
+    
+    return AuthMethodResponse(
+        auth_method=_auth_method_config["auth_method"],
+        saml_enabled=_auth_method_config.get("saml_enabled", False),
+    )
+
+
+@router.put("/auth/method", response_model=AuthMethodResponse)
+async def admin_update_auth_method(
+    update: AuthMethodUpdate,
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the authentication method (superuser only)."""
+    await require_superuser(current_user_id, db)
+    
+    if update.auth_method not in ("local", "saml"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid auth_method. Must be 'local' or 'saml'.",
+        )
+    
+    _auth_method_config["auth_method"] = update.auth_method
+    _auth_method_config["saml_enabled"] = (update.auth_method == "saml")
+    
+    return AuthMethodResponse(
+        auth_method=_auth_method_config["auth_method"],
+        saml_enabled=_auth_method_config["saml_enabled"],
+    )
+
+
+@router.get("/auth/saml", response_model=SAMLConfigResponse)
+async def admin_get_saml_config(
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the SAML configuration (superuser only)."""
+    await require_superuser(current_user_id, db)
+    
+    return SAMLConfigResponse(**_saml_config)
+
+
+@router.put("/auth/saml", response_model=SAMLConfigResponse)
+async def admin_update_saml_config(
+    update: SAMLConfigUpdate,
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the SAML configuration (superuser only)."""
+    await require_superuser(current_user_id, db)
+    
+    _saml_config.update({
+        "saml_enabled": update.saml_enabled,
+        "entity_id": update.entity_id,
+        "sso_url": update.sso_url,
+        "idp_metadata_url": update.idp_metadata_url,
+        "acs_url": update.acs_url,
+        "certificate": update.certificate,
+        "entity_id_label": update.entity_id_label,
+        "slo_url": update.slo_url,
+        "slo_redirect_url": update.slo_redirect_url,
+        "certificate_label": update.certificate_label,
+    })
+    
+    return SAMLConfigResponse(**_saml_config)

@@ -4,11 +4,12 @@ import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import UserManagement from '../components/AdminUserManagement'
 import BackupRecovery from '../components/AdminBackupRecovery'
+import AdminAuthMethod from '../components/AdminAuthMethod'
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'users' | 'backup'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'backup' | 'auth'>('users')
 
   const handleLogout = () => {
     logout()
@@ -74,6 +75,19 @@ export default function AdminDashboard() {
                 Backup & Recovery
               </span>
             </button>
+            <button
+              onClick={() => setActiveTab('auth')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                activeTab === 'auth' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7.586l-.293-.293a6 6 0 01-2-8.485 5.993 5.993 0 011.414-1.414L11 1h2a2 2 0 012 2v4m-4 0a2 2 0 01-2-2m0 0a2 2 0 00-2 2m2-2v14a2 2 0 002 2h2a2 2 0 002-2V7m-6 0h6" />
+                </svg>
+                Authentication
+              </span>
+            </button>
           </div>
         </div>
 
@@ -81,6 +95,7 @@ export default function AdminDashboard() {
         <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'users' && <UserManagement />}
           {activeTab === 'backup' && <BackupRecovery />}
+          {activeTab === 'auth' && <AdminAuthMethod />}
         </div>
       </div>
     </div>
