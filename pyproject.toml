@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools._backport.pyproject"
+
+[project]
+name = "ia-tests-2"
+version = "0.1.0"
+description = "IA tests 2"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+ia-tests-2 = "ia_tests_2.main:main"
+
+[tool.setuptools.packages.find]
+include = ["ia_tests_2*"]
+exclude = ["tests*", "docs*"]
