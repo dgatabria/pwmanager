@@ -20,10 +20,45 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+/**
+ * Decode the JWT payload (base64url) to extract the exp claim.
+ * Returns the expiration timestamp or null if the token is invalid.
+ */
+function decodeJwtPayload(token: string): { exp: number } | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const payload = atob(parts[1])
+    const json = JSON.parse(payload)
+    if (json && typeof json.exp === 'number') return json
+  } catch {
+    // Invalid token format
+  }
+  return null
+}
+
+/** Check if a JWT token has expired. */
+function isTokenExpired(token: string): boolean {
+  const payload = decodeJwtPayload(token)
+  if (!payload) return true
+  return Date.now() >= payload.exp * 1000
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'))
+  const [token, setToken] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  // Initialize token from localStorage and check expiration
+  useEffect(() => {
+    const stored = localStorage.getItem('token')
+    if (stored && !isTokenExpired(stored)) {
+      setToken(stored)
+    } else {
+      // Token expired or missing — clear it
+      localStorage.removeItem('token')
+    }
+  }, [])
 
   // Fetch user info from server to verify token and get accurate role info
   useEffect(() => {
