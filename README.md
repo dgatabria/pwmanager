@@ -332,13 +332,14 @@ ia-tests-2/
 │   │   ├── main.py               # Aplicación FastAPI + middleware
 │   │   ├── config.py             # Configuración de secretos
 │   │   ├── database.py           # Motor SQLAlchemy async
+│   │   ├── migrations/           # DB migration scripts
 │   │   ├── routers/              # Endpoints API
 │   │   │   ├── auth.py           # Login, registro, perfil
 │   │   │   ├── admin.py          # Admin: usuarios, SAML, key rotation
 │   │   │   ├── secrets.py        # CRUD de secretos
 │   │   │   ├── api_tokens.py     # Tokens de API programáticos
 │   │   │   ├── groups.py         # Membresía de grupos
-│   │   │   └── secret_groups.py  # Grupos de secretos
+│   │   │   └── secret_groups.py  # Grupos de secretos (owner-based RBAC)
 │   │   ├── services/
 │   │   │   ├── auth.py           # JWT RS256
 │   │   │   ├── encryption.py     # Fernet encryption
@@ -349,6 +350,13 @@ ia-tests-2/
 │   │   └── utils/
 │   │       ├── security.py       # Password hashing (bcrypt)
 │   │       └── rsa_keys.py       # RSA key pair management
+│   ├── cli/                      # CLI tool for command-line access
+│   │   ├── __init__.py           # Package init
+│   │   ├── config.py             # Config loader (API key, base URL)
+│   │   ├── api.py                # PMClient HTTP client
+│   │   ├── utils.py              # Terminal colors, table formatter
+│   │   ├── passwordmanager.py    # Main CLI entry point
+│   │   └── requirements.txt      # Dependency: requests>=2.28.0
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   ├── seed.py                   # Seed script (admin + grupos)
@@ -358,15 +366,19 @@ ia-tests-2/
 │   │   ├── App.tsx               # Router + auth guard
 │   │   ├── main.tsx              # Entry point
 │   │   ├── components/           # UI components
+│   │   │   ├── CreateSecretGroupModal.tsx  # New group creation modal
+│   │   │   ├── GroupSidebar.tsx            # Sidebar with access badges
+│   │   │   └── ...
 │   │   ├── contexts/             # Auth context
 │   │   ├── pages/                # Page components
 │   │   └── services/             # API client
 │   ├── package.json
 │   └── vite.config.ts            # Proxy /api → localhost:8000
 ├── scripts/
-│   └── setup-secrets.sh          # Script legacy de generación de secrets
+│   ├── setup-secrets.sh          # Legacy secret generation script
+│   └── passwordmanager           # CLI launcher (Linux/macOS)
 ├── docker-compose.yml            # Docker orchestration
-├── deploy.sh                     # Script principal de despliegue
+├── deploy.sh                     # Deployment script
 ├── .env.example                  # Template de variables
 ├── .env.db                       # DB config (git-ignored)
 ├── .env.backend                  # Backend config (git-ignored)
