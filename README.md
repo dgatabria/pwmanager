@@ -261,9 +261,9 @@ ia-tests-2/
 | Característica | Implementación |
 |----------------|----------------|
 | Autenticación | JWT RS256 (asimétrico, par RSA autogenerado) |
-| Passwords | bcrypt con salt |
+| Passwords | bcrypt con salt + política de complejidad (mín. 12 chars, mayúscula, minúscula, dígito, carácter especial) |
 | Secrets en reposo | Fernet (AES-128-CBC) |
-| Rate limiting | slowapi (5 req/min en login, 10/h en registro) |
+| Rate limiting | slowapi (5 req/min en login, 10/h en registro, 60/min en endpoints admin y secret access) |
 | Audit logging | IP, user-agent, timestamp en reveal/copy |
 | Headers seguridad | HSTS, X-Frame-Options: DENY, CSP, nosniff |
 | RBAC | Grupos → Secret groups (read/write) |

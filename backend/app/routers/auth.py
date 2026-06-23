@@ -111,7 +111,13 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """Register a new user.
     
     Rate limited to prevent abuse. Username and email uniqueness enforced.
+    Password must meet strength requirements.
     """
+    # Validate password strength
+    is_valid, error_msg = SecurityUtils.validate_password_strength(user_data.password)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_msg)
+
     # Check if username exists
     result = await db.execute(select(User).where(User.username == user_data.username))
     if result.scalar_one_or_none():

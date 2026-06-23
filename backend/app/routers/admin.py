@@ -3,6 +3,8 @@
 from typing import Annotated
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +32,9 @@ from app.utils.security import SecurityUtils
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
+
+# Rate limiter for admin endpoints
+_admin_limiter = Limiter(key_func=get_remote_address)
 
 UserDep = Annotated[int, Depends(get_current_user)]
 
@@ -187,14 +192,25 @@ async def admin_update_user(
 
 
 @router.post("/users/{user_id}/reset-password", response_model=dict)
+@_admin_limiter.limit("60/minute")
 async def admin_reset_password(
     user_id: int,
     request: ResetPasswordRequest,
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Reset a user's password (superuser only)."""
+    """Reset a user's password (superuser only).
+
+    Rate limited to 60 requests per minute to prevent abuse while
+    allowing admins to perform multiple operations during setup.
+    Password must meet strength requirements.
+    """
     await require_superuser(current_user_id, db)
+    
+    # Validate password strength
+    is_valid, error_msg = SecurityUtils.validate_password_strength(request.new_password)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_msg)
     
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -552,24 +568,29 @@ async def admin_backup_restore(
 
 # ─── Authentication Method Configuration ────────────────────────────
 
-# In-memory store for auth method configuration (persisted separately from SAML)
-_auth_method_config: dict = {
-    "auth_method": "local",
-    "saml_enabled": False,
-}
-
-
 @router.get("/auth/method", response_model=AuthMethodResponse)
 async def admin_get_auth_method(
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get the current authentication method configuration (superuser only)."""
+    """Get the current authentication method configuration (superuser only).
+
+    Reads from the database to ensure persistence across restarts.
+    """
     await require_superuser(current_user_id, db)
     
+    result = await db.execute(select(SAMLConfig))
+    config = result.scalar_one_or_none()
+    
+    if config is None:
+        return AuthMethodResponse(
+            auth_method="local",
+            saml_enabled=False,
+        )
+    
     return AuthMethodResponse(
-        auth_method=_auth_method_config["auth_method"],
-        saml_enabled=_auth_method_config.get("saml_enabled", False),
+        auth_method=config.auth_method,
+        saml_enabled=config.saml_enabled,
     )
 
 
@@ -579,7 +600,10 @@ async def admin_update_auth_method(
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update the authentication method (superuser only)."""
+    """Update the authentication method (superuser only).
+
+    Persists the configuration to the database for survival across restarts.
+    """
     await require_superuser(current_user_id, db)
     
     if update.auth_method not in ("local", "saml"):
@@ -588,12 +612,27 @@ async def admin_update_auth_method(
             detail="Invalid auth_method. Must be 'local' or 'saml'.",
         )
     
-    _auth_method_config["auth_method"] = update.auth_method
-    _auth_method_config["saml_enabled"] = (update.auth_method == "saml")
+    result = await db.execute(select(SAMLConfig))
+    config = result.scalar_one_or_none()
+    
+    if config is None:
+        # Create new config
+        config = SAMLConfig(
+            auth_method=update.auth_method,
+            saml_enabled=(update.auth_method == "saml"),
+        )
+        db.add(config)
+    else:
+        # Update existing config
+        config.auth_method = update.auth_method
+        config.saml_enabled = (update.auth_method == "saml")
+    
+    await db.commit()
+    await db.refresh(config)
     
     return AuthMethodResponse(
-        auth_method=_auth_method_config["auth_method"],
-        saml_enabled=_auth_method_config["saml_enabled"],
+        auth_method=config.auth_method,
+        saml_enabled=config.saml_enabled,
     )
 
 
@@ -610,10 +649,11 @@ async def admin_get_saml_config(
     
     if config is None:
         # Return empty config if not yet created
-        return SAMLConfigResponse(saml_enabled=False)
+        return SAMLConfigResponse(saml_enabled=False, auth_method="local")
     
     return SAMLConfigResponse(
         saml_enabled=config.saml_enabled,
+        auth_method=config.auth_method,
         entity_id=config.entity_id,
         sso_url=config.sso_url,
         idp_metadata_url=config.idp_metadata_url,
@@ -641,6 +681,7 @@ async def admin_update_saml_config(
     if config is None:
         # Create new config
         config = SAMLConfig(
+            auth_method=update.auth_method,
             saml_enabled=update.saml_enabled,
             entity_id=update.entity_id,
             sso_url=update.sso_url,
@@ -655,6 +696,7 @@ async def admin_update_saml_config(
         db.add(config)
     else:
         # Update existing config
+        config.auth_method = update.auth_method
         config.saml_enabled = update.saml_enabled
         config.entity_id = update.entity_id
         config.sso_url = update.sso_url
@@ -671,6 +713,7 @@ async def admin_update_saml_config(
     
     return SAMLConfigResponse(
         saml_enabled=config.saml_enabled,
+        auth_method=config.auth_method,
         entity_id=config.entity_id,
         sso_url=config.sso_url,
         idp_metadata_url=config.idp_metadata_url,

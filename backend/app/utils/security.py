@@ -1,5 +1,7 @@
 """Password hashing utilities."""
 
+import re
+
 import bcrypt
 
 from app.database import async_session
@@ -8,6 +10,15 @@ from app.models.user import User
 
 class SecurityUtils:
     """Utilities for password hashing and SSH key generation."""
+
+    # Minimum password requirements
+    MIN_PASSWORD_LENGTH = 12
+    COMMON_PASSWORDS = {
+        "password", "password123", "12345678", "123456789", "1234567890",
+        "qwerty123", "admin", "admin123", "root", "toor", "letmein",
+        "welcome", "monkey", "master", "dragon", "login", "princess",
+        "passw0rd", "abc12345", "111111", "000000", "qwerty",
+    }
 
     @staticmethod
     def hash_password(password: str) -> str:
@@ -22,6 +33,41 @@ class SecurityUtils:
         return bcrypt.checkpw(
             plain_password.encode("utf-8"), hashed_password.encode("utf-8")
         )
+
+    @staticmethod
+    def validate_password_strength(password: str) -> tuple[bool, str]:
+        """Validate password strength against security policy.
+
+        Requirements:
+        - At least 12 characters
+        - At least one uppercase letter
+        - At least one lowercase letter
+        - At least one digit
+        - At least one special character
+        - Not a commonly used password
+
+        Returns:
+            Tuple of (is_valid, error_message). If valid, error_message is empty.
+        """
+        if len(password) < SecurityUtils.MIN_PASSWORD_LENGTH:
+            return False, f"Password must be at least {SecurityUtils.MIN_PASSWORD_LENGTH} characters long"
+
+        if not re.search(r"[A-Z]", password):
+            return False, "Password must contain at least one uppercase letter"
+
+        if not re.search(r"[a-z]", password):
+            return False, "Password must contain at least one lowercase letter"
+
+        if not re.search(r"[0-9]", password):
+            return False, "Password must contain at least one digit"
+
+        if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?`~]", password):
+            return False, "Password must contain at least one special character"
+
+        if password.lower() in SecurityUtils.COMMON_PASSWORDS:
+            return False, "Password is too common, please choose a different one"
+
+        return True, ""
 
     @staticmethod
     def generate_ssh_key(key_length: int = 4096, comment: str = "ssh-key") -> tuple[str, str, str]:

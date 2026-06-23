@@ -69,6 +69,7 @@ class AuthMethodUpdate(BaseModel):
 class SAMLConfigResponse(BaseModel):
     """Response schema for SAML configuration."""
     saml_enabled: bool
+    auth_method: str = "local"
     entity_id: str | None = None
     sso_url: str | None = None
     idp_metadata_url: str | None = None
@@ -83,6 +84,7 @@ class SAMLConfigResponse(BaseModel):
 class SAMLConfigUpdate(BaseModel):
     """Request schema for updating SAML configuration."""
     saml_enabled: bool = False
+    auth_method: str = "local"
     entity_id: str | None = None
     sso_url: str | None = None
     idp_metadata_url: str | None = None

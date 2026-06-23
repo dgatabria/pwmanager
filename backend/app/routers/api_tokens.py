@@ -3,6 +3,8 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +22,9 @@ from app.services.api_token import APITokenService
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/api-tokens", tags=["API Tokens"])
+
+# Rate limiter for API token endpoints
+_token_limiter = Limiter(key_func=get_remote_address)
 
 
 async def get_current_user_with_api_key(
@@ -96,12 +101,16 @@ async def list_tokens(
 
 
 @router.post("/generate", response_model=APITokenCreateResponse, status_code=201)
+@_token_limiter.limit("60/minute")
 async def generate_token(
     token_data: APITokenCreate,
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate a new API token."""
+    """Generate a new API token.
+
+    Rate limited to 60 requests per minute to prevent abuse.
+    """
     user_id = user_info["id"]
 
     try:

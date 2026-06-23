@@ -77,8 +77,25 @@ export default function AdminUserManagement() {
       setError('Passwords do not match')
       return
     }
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters')
+    // Client-side validation (server will also validate)
+    if (newPassword.length < 12) {
+      setError('Password must be at least 12 characters')
+      return
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      setError('Password must contain at least one uppercase letter')
+      return
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      setError('Password must contain at least one lowercase letter')
+      return
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      setError('Password must contain at least one digit')
+      return
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?`~]/.test(newPassword)) {
+      setError('Password must contain at least one special character')
       return
     }
     try {
@@ -323,6 +340,16 @@ export default function AdminUserManagement() {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md m-4 p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Reset Password</h2>
             <div className="space-y-4">
+              <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <p className="text-sm font-medium text-purple-800 mb-1">Password requirements:</p>
+                <ul className="text-xs text-purple-700 list-disc list-inside space-y-0.5">
+                  <li>At least 12 characters</li>
+                  <li>One uppercase letter</li>
+                  <li>One lowercase letter</li>
+                  <li>One digit</li>
+                  <li>One special character (!@#$%^&*...)</li>
+                </ul>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
                 <input

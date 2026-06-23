@@ -3,6 +3,8 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,6 +31,9 @@ from app.utils.security import SecurityUtils
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/secrets", tags=["Secrets"])
+
+# Rate limiter for secret access endpoints
+_secret_limiter = Limiter(key_func=get_remote_address)
 
 
 UserDep = Annotated[dict, Depends(get_current_user)]
@@ -105,7 +110,12 @@ async def list_secrets(
     search: str | None = Query(None),
     secret_type: str | None = Query(None),
 ):
-    """List secrets accessible to the current user."""
+    """List secrets accessible to the current user.
+
+    Note: The username field is intentionally excluded from this endpoint
+    to prevent information leakage. Username is only revealed when a user
+    explicitly views a specific secret.
+    """
     user_id = user_info["id"]
 
     query = (
@@ -114,7 +124,6 @@ async def list_secrets(
             Secret.title,
             Secret.description,
             Secret.secret_type,
-            Secret.username,
             Secret.group_id,
             Secret.updated_at,
             Secret.key_length,
@@ -143,7 +152,6 @@ async def list_secrets(
             "title": s.title,
             "description": s.description,
             "secret_type": s.secret_type.value if isinstance(s.secret_type, SecretType) else s.secret_type,
-            "username": s.username,
             "group_id": s.group_id,
             "updated_at": str(s.updated_at),
             "key_length": s.key_length,
@@ -383,13 +391,17 @@ async def get_secret_masked(
 
 
 @router.get("/{secret_id}/reveal", response_model=SecretRevealResponse)
+@_secret_limiter.limit("60/minute")
 async def reveal_secret(
     secret_id: int,
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """Reveal secret data with full audit logging."""
+    """Reveal secret data with full audit logging.
+
+    Rate limited to 60 requests per minute to prevent data exfiltration.
+    """
     user_id = user_info["id"]
     secret = await check_secret_access(secret_id, user_id, db, permission="read")
 
@@ -434,13 +446,17 @@ async def reveal_secret(
 
 
 @router.post("/{secret_id}/copy", response_model=SecretCopyResponse)
+@_secret_limiter.limit("60/minute")
 async def copy_secret(
     secret_id: int,
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
     request: Request = None,
 ):
-    """Copy secret data to clipboard with full audit logging."""
+    """Copy secret data to clipboard with full audit logging.
+
+    Rate limited to 60 requests per minute to prevent data exfiltration.
+    """
     user_id = user_info["id"]
     secret = await check_secret_access(secret_id, user_id, db, permission="read")
 
