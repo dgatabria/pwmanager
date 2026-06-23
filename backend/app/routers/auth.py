@@ -104,17 +104,44 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
     and also returned in the JSON body for clients that cannot use cookies.
 
     Rate limited to prevent brute force attacks.
+    Account lockout: after N failed attempts the account is locked for
+    LOCKOUT_DURATION_MINUTES.
+
     During maintenance mode, only superusers can log in.
     """
     result = await db.execute(select(User).where(User.username == request.username))
     user = result.scalar_one_or_none()
 
+    # Check if user exists and verify password
     if not user or not SecurityUtils.verify_password(request.password, user.hashed_password):
+        # Increment failed attempts (even if user doesn't exist — prevents user enumeration)
+        if user:
+            user.failed_login_attempts += 1
+            if user.failed_login_attempts >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
+                from datetime import timedelta
+                user.locked_until = datetime.now(timezone.utc) + timedelta(
+                    minutes=settings.LOCKOUT_DURATION_MINUTES
+                )
+            await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Check if account is locked
+    if user.locked_until and datetime.now(timezone.utc) < user.locked_until:
+        remaining = int((user.locked_until - datetime.now(timezone.utc)).total_seconds() / 60)
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=f"Account is locked. Try again in {remaining} minute(s).",
+        )
+
+    # If account was previously locked but lock has expired, reset attempts
+    if user.failed_login_attempts > 0:
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        await db.commit()
 
     if not user.is_active:
         raise HTTPException(

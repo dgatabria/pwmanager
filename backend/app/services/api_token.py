@@ -1,7 +1,7 @@
 """API Token management service."""
 
 import secrets
-import hashlib
+import bcrypt
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -24,8 +24,15 @@ class APITokenService:
 
     @staticmethod
     def hash_token(token: str) -> str:
-        """Hash a token for storage (SHA-256)."""
-        return hashlib.sha256(token.encode()).hexdigest()
+        """Hash a token for storage (bcrypt).
+
+        bcrypt is used instead of SHA-256 because it is computationally
+        expensive, making offline brute-force attacks significantly harder.
+        """
+        return bcrypt.hashpw(
+            token.encode("utf-8"),
+            bcrypt.gensalt(rounds=12),
+        ).decode("utf-8")
 
     @staticmethod
     async def create_token(
@@ -58,19 +65,24 @@ class APITokenService:
         db: AsyncSession, token: str
     ) -> tuple[APIToken | None, dict | None]:
         """
-        Validate an API token.
+        Validate an API token using bcrypt.checkpw.
+
         Returns (api_token, user_info) if valid, (None, None) if invalid.
         """
-        token_hash = APITokenService.hash_token(token)
-
         result = await db.execute(
             select(APIToken)
-            .where(APIToken.token_hash == token_hash)
             .where(APIToken.is_active == True)
         )
         api_token = result.scalar_one_or_none()
 
         if not api_token:
+            return None, None
+
+        # Verify token against bcrypt hash (constant-time comparison)
+        if not bcrypt.checkpw(
+            token.encode("utf-8"),
+            api_token.token_hash.encode("utf-8"),
+        ):
             return None, None
 
         # Check expiration
@@ -133,16 +145,18 @@ class APITokenService:
         Recycle an API token: revoke the old one and create a new one.
         Returns (new_plain_token, new_token_record).
         """
-        # Validate old token
+        # Validate old token using bcrypt.checkpw
         result = await db.execute(
             select(APIToken)
-            .where(APIToken.token_hash == APITokenService.hash_token(old_token))
             .where(APIToken.user_id == user_id)
             .where(APIToken.is_active == True)
         )
         old_api_token = result.scalar_one_or_none()
 
-        if not old_api_token:
+        if not old_api_token or not bcrypt.checkpw(
+            old_token.encode("utf-8"),
+            old_api_token.token_hash.encode("utf-8"),
+        ):
             raise ValueError("Invalid or expired token")
 
         # Revoke old token

@@ -14,7 +14,7 @@ class APIToken(Base):
     __tablename__ = "api_tokens"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

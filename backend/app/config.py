@@ -73,6 +73,13 @@ class Settings(BaseSettings):
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
+    # Account lockout settings
+    # Maximum number of failed login attempts before account is locked
+    MAX_FAILED_LOGIN_ATTEMPTS: int = 5
+    # Duration (in minutes) that an account remains locked after exceeding
+    # the maximum failed attempts
+    LOCKOUT_DURATION_MINUTES: int = 15
+
     # Enable/disable Swagger UI and ReDoc documentation endpoints
     # Disabled by default in production to avoid leaking API surface
     DOCS_ENABLED: bool = False
