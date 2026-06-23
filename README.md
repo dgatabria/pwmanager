@@ -332,7 +332,9 @@ ia-tests-2/
 │   │   ├── main.py               # Aplicación FastAPI + middleware
 │   │   ├── config.py             # Configuración de secretos
 │   │   ├── database.py           # Motor SQLAlchemy async
-│   │   ├── migrations/           # DB migration scripts
+│   │   ├── migrations/
+│   │   │   ├── __init__.py       # Migration runner
+│   │   │   └── 001_add_owner_id.py  # Add owner_id to secret_groups
 │   │   ├── routers/              # Endpoints API
 │   │   │   ├── auth.py           # Login, registro, perfil
 │   │   │   ├── admin.py          # Admin: usuarios, SAML, key rotation
@@ -365,13 +367,31 @@ ia-tests-2/
 │   ├── src/
 │   │   ├── App.tsx               # Router + auth guard
 │   │   ├── main.tsx              # Entry point
-│   │   ├── components/           # UI components
-│   │   │   ├── CreateSecretGroupModal.tsx  # New group creation modal
-│   │   │   ├── GroupSidebar.tsx            # Sidebar with access badges
-│   │   │   └── ...
-│   │   ├── contexts/             # Auth context
-│   │   ├── pages/                # Page components
-│   │   └── services/             # API client
+│   │   ├── components/
+│   │   │   ├── AddSecretButton.tsx
+│   │   │   ├── AdminAuthMethod.tsx
+│   │   │   ├── AdminBackupRecovery.tsx
+│   │   │   ├── AdminUserManagement.tsx
+│   │   │   ├── CreateSecretGroupModal.tsx  # New: group creation with visibility
+│   │   │   ├── GroupSidebar.tsx            # Updated: owner badges + access indicators
+│   │   │   ├── SearchBar.tsx
+│   │   │   ├── SecretDetail.tsx
+│   │   │   ├── SecretForm.tsx
+│   │   │   ├── SecretList.tsx
+│   │   │   └── UserManagement.tsx
+│   │   ├── contexts/
+│   │   │   └── AuthContext.tsx
+│   │   ├── pages/
+│   │   │   ├── AdminDashboard.tsx
+│   │   │   ├── Dashboard.tsx               # Updated: group creation modal
+│   │   │   ├── Login.tsx
+│   │   │   └── Preferences.tsx
+│   │   ├── services/
+│   │   │   └── api.ts
+│   │   ├── types/
+│   │   │   └── index.ts
+│   │   └── utils/
+│   │       └── url.ts
 │   ├── package.json
 │   └── vite.config.ts            # Proxy /api → localhost:8000
 ├── scripts/
