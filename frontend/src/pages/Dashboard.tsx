@@ -10,6 +10,7 @@ import GroupSidebar from '../components/GroupSidebar'
 import AddSecretButton from '../components/AddSecretButton'
 import SearchBar from '../components/SearchBar'
 import UserManagement from '../components/UserManagement'
+import CreateSecretGroupModal from '../components/CreateSecretGroupModal'
 
 export default function Dashboard() {
   const { logout } = useAuth()
@@ -22,6 +23,7 @@ export default function Dashboard() {
   const [selectedSecret, setSelectedSecret] = useState<Secret | null>(null)
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false)
   const [editingSecret, setEditingSecret] = useState<Secret | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState<'secrets' | 'users'>('secrets')
@@ -94,6 +96,12 @@ export default function Dashboard() {
   const handleEdit = (secret: Secret) => {
     setEditingSecret(secret)
     setShowForm(true)
+  }
+
+  // Handle group creation
+  const handleCreateGroup = async () => {
+    await fetchData()
+    setShowCreateGroupModal(false)
   }
 
   const handleAddSSHKey = async () => {
@@ -189,7 +197,7 @@ export default function Dashboard() {
               userGroups={groups}
               selectedGroupId={selectedGroupId}
               onSelectGroup={setSelectedGroupId}
-              onAddGroup={() => {}}
+              onAddGroup={() => setShowCreateGroupModal(true)}
             />
 
             {/* Center - Secret List */}
@@ -235,9 +243,6 @@ export default function Dashboard() {
                   secret={selectedSecret}
                   onEdit={() => handleEdit(selectedSecret)}
                   onDelete={() => handleDelete(selectedSecret.id)}
-                  onCopy={(text: string) => {
-                    navigator.clipboard.writeText(text)
-                  }}
                 />
               ) : (
                 <div className="h-full flex items-center justify-center text-gray-400">
@@ -282,6 +287,16 @@ export default function Dashboard() {
             />
           </div>
         </div>
+      )}
+
+      {/* Create Secret Group Modal */}
+      {showCreateGroupModal && (
+        <CreateSecretGroupModal
+          userGroups={groups}
+          existingGroups={secretGroups}
+          onClose={() => setShowCreateGroupModal(false)}
+          onSuccess={handleCreateGroup}
+        />
       )}
     </div>
   )

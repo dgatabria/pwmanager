@@ -101,6 +101,8 @@ export interface SecretGroup {
   description: string | null
   parent_id: number | null
   group_id: number
+  owner_id: number
+  owner_username?: string
   is_active: boolean
   group_ids?: number[]
   child_count?: number
