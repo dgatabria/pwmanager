@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
+import { sanitizeUrl } from '../utils/url'
 import type { Secret, SecretMasked, SecretReveal, SecretCopy } from '../types'
 
 interface Props {
@@ -136,9 +137,19 @@ export default function SecretDetail({ secret, onEdit, onDelete }: Props) {
         {secret.url && (
           <div className="bg-white rounded-lg p-4 border border-gray-200 col-span-2">
             <span className="text-xs text-gray-500 uppercase tracking-wide">URL</span>
-            <a href={secret.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-1 block">
-              {secret.url}
-            </a>
+            {(() => {
+              const safeUrl = sanitizeUrl(secret.url)
+              if (!safeUrl) {
+                return (
+                  <p className="text-sm text-red-500 mt-1">Invalid URL (protocol not allowed)</p>
+                )
+              }
+              return (
+                <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline mt-1 block">
+                  {safeUrl}
+                </a>
+              )
+            })()}
           </div>
         )}
       </div>

@@ -108,15 +108,17 @@ En producción, **nunca** uses valores por defecto ni hardcodeados. Todas estas 
 | `ENCRYPTION_KEY` | Clave Fernet (32 bytes base64) para encriptar secretos en reposo | `openssl rand -base64 32` |
 | `POSTGRES_PASSWORD` | Contraseña del usuario PostgreSQL | `openssl rand -hex 32` |
 | `RSA_KEY_PASSPHRASE` | **Opcional pero recomendado**: passphrase para cifrar la clave privada RSA en disco | Cualquier string aleatorio seguro |
+| `DOCS_ENABLED` | **Debe ser `false` en producción**. Habilita Swagger UI y ReDoc | `true` (dev) o `false` (prod) |
 
 > ⚠️ **Sin `ENCRYPTION_KEY`, todos los secretos encriptados se pierden para siempre.**
 > ⚠️ **Sin `POSTGRES_PASSWORD`, la base de datos no arranca.**
 > ⚠️ **Si no se configura `RSA_KEY_PASSPHRASE`, la clave privada JWT se almacena sin cifrar en disco — cualquiera con acceso al filesystem puede forjar tokens de admin.**
+> ⚠️ **Si `DOCS_ENABLED=true` en producción, se expone la documentación interactiva de la API — revela endpoints, schemas y comportamientos internos.**
 
 > ⚠️ **Importante para producción**:
 > - Configurar un reverse proxy (nginx/Traefik) con TLS terminando HTTPS
 > - El `docker-compose.yml` expone puertos sin HTTPS
-> - No exponer el puerto 5432 de PostgreSQL fuera del host
+> - PostgreSQL **no expone puertos** — solo es accesible dentro de la red Docker
 > - Hacer backup de `backend/secrets/*.txt` y `.env.*` — sin ellos, los datos encriptados se pierden para siempre
 
 ## Comandos Disponibles

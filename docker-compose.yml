@@ -3,8 +3,8 @@ services:
     image: postgres:16-alpine
     env_file:
       - .env.db
-    ports:
-      - "5432:5432"
+    # No exposed ports — PostgreSQL is only accessible within the Docker
+    # network by the backend container. Do NOT map this port externally.
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

@@ -73,6 +73,10 @@ class Settings(BaseSettings):
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
+    # Enable/disable Swagger UI and ReDoc documentation endpoints
+    # Disabled by default in production to avoid leaking API surface
+    DOCS_ENABLED: bool = False
+
     class Config:
         env_file = ".env"
 
