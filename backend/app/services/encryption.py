@@ -51,13 +51,28 @@ class EncryptionService:
             except OSError:
                 pass  # Fall through to generation
 
-        # Generate a new key and persist it
+        # Generate a new key and persist it (exclusive creation to prevent
+        # TOCTOU race where two processes generate different keys)
         new_key = base64.urlsafe_b64encode(os.urandom(32)).decode()
         try:
-            with open(_ENCRYPTION_KEY_FILE, "w") as f:
+            with open(_ENCRYPTION_KEY_FILE, "x") as f:
                 f.write(new_key)
             settings.ENCRYPTION_KEY = new_key
             return new_key
+        except FileExistsError:
+            # Another process created the file between our exists() check
+            # and the open() call — read it instead
+            with open(_ENCRYPTION_KEY_FILE, "r") as f:
+                persisted_key = f.read().strip()
+            if persisted_key:
+                settings.ENCRYPTION_KEY = persisted_key
+                return persisted_key
+            raise RuntimeError(
+                "Cannot start: encryption key is not configured and "
+                "the application cannot persist a new key to disk. "
+                f"Set the ENCRYPTION_KEY environment variable to a valid "
+                f"32-byte base64-encoded key, or ensure write access to {_ENCRYPTION_KEY_FILE}"
+            )
         except OSError:
             raise RuntimeError(
                 "Cannot start: encryption key is not configured and "
