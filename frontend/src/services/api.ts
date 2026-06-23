@@ -1,21 +1,18 @@
-const getToken = () => localStorage.getItem('token')
-
 const api = {
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const token = getToken()
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     }
 
     const response = await fetch(`/api${endpoint}`, {
       ...options,
+      credentials: 'include', // Send httpOnly cookies
       headers,
     })
 
     if (response.status === 401) {
-      localStorage.removeItem('token')
+      // Token expired or invalid — redirect to login
       window.location.href = '/login'
       throw new Error('Unauthorized')
     }

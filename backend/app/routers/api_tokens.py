@@ -37,6 +37,12 @@ async def get_current_user_with_api_key(
     """
     Dependency to get current user from JWT token or API key.
     Supports both session-based and API key authentication.
+
+    Authentication strategy:
+    - If a Bearer token is present (valid or not), use it exclusively.
+      This prevents an attacker from supplying an invalid JWT that falls
+      through to API-key auth and potentially authenticates as a different user.
+    - If no Bearer header is present, fall back to API-key auth.
     Returns user_info dict.
     """
     user_id = None
@@ -58,11 +64,14 @@ async def get_current_user_with_api_key(
                     "is_superuser": payload.get("is_superuser", False),
                 }
         except Exception as exc:
-            # JWT validation failed — log for audit trail and fall through
-            # to API key auth only if no Bearer token was provided at all.
-            logging.warning("JWT validation failed: %s", exc)
+            # JWT validation failed — reject. Do NOT fall through to API key
+            # auth, because that would allow an attacker to supply an invalid
+            # JWT that silently bypasses JWT validation and authenticates as
+            # whatever user the API key belongs to.
+            logging.warning("JWT validation failed, rejecting request: %s", exc)
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    # Try API key if JWT failed or wasn't provided
+    # Only try API key if no Bearer header was provided at all
     if user_id is None and (x_api_key or (authorization and authorization.startswith("ApiKey "))):
         api_key = x_api_key or (authorization.split(" ", 1)[1] if authorization else None)
         if api_key:

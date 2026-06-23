@@ -98,3 +98,14 @@ settings = Settings()
 # Require secrets at startup — never fall back to placeholders
 settings.DATABASE_URL = _require_secret("DATABASE_URL")
 settings.ENCRYPTION_KEY = _require_secret("ENCRYPTION_KEY")
+
+# In production, RSA_KEY_PASSPHRASE must be set to encrypt the RSA private key
+# on disk. Without it, anyone with filesystem access can forge JWT tokens.
+_rsa_passphrase = _read_secret("RSA_KEY_PASSPHRASE")
+if not _rsa_passphrase:
+    print(
+        "WARNING: RSA_KEY_PASSPHRASE is not set. The RSA private key will be "
+        "stored unencrypted on disk. In production, set the RSA_KEY_PASSPHRASE "
+        "environment variable or provide it via Docker secrets.",
+        file=sys.stderr,
+    )

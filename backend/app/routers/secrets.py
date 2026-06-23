@@ -103,6 +103,7 @@ async def check_secret_access(
 
 
 @router.get("")
+@_secret_limiter.limit("60/minute")
 async def list_secrets(
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
@@ -115,6 +116,8 @@ async def list_secrets(
     Note: The username field is intentionally excluded from this endpoint
     to prevent information leakage. Username is only revealed when a user
     explicitly views a specific secret.
+
+    Rate limited to 60 requests per minute to prevent enumeration attacks.
     """
     user_id = user_info["id"]
 
@@ -163,12 +166,16 @@ async def list_secrets(
 
 
 @router.get("/{secret_id}", response_model=SecretViewResponse)
+@_secret_limiter.limit("60/minute")
 async def get_secret(
     secret_id: int,
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a single secret with decrypted data."""
+    """Get a single secret with decrypted data.
+
+    Rate limited to 60 requests per minute to prevent data exfiltration.
+    """
     user_id = user_info["id"]
     secret = await check_secret_access(secret_id, user_id, db, permission="read")
 
@@ -199,12 +206,16 @@ async def get_secret(
 
 
 @router.post("", response_model=SecretResponse, status_code=201)
+@_secret_limiter.limit("30/minute")
 async def create_secret(
     secret_data: SecretCreate,
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new secret."""
+    """Create a new secret.
+
+    Rate limited to 30 requests per minute to prevent abuse.
+    """
     user_id = user_info["id"]
 
     # Verify group exists
@@ -251,13 +262,17 @@ async def create_secret(
 
 
 @router.put("/{secret_id}", response_model=SecretResponse)
+@_secret_limiter.limit("30/minute")
 async def update_secret(
     secret_id: int,
     secret_data: SecretUpdate,
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a secret."""
+    """Update a secret.
+
+    Rate limited to 30 requests per minute to prevent abuse.
+    """
     user_id = user_info["id"]
     secret = await check_secret_access(secret_id, user_id, db, permission="write")
 
@@ -295,12 +310,16 @@ async def update_secret(
 
 
 @router.delete("/{secret_id}", status_code=204)
+@_secret_limiter.limit("30/minute")
 async def delete_secret(
     secret_id: int,
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Soft delete a secret."""
+    """Soft delete a secret.
+
+    Rate limited to 30 requests per minute to prevent mass deletion.
+    """
     user_id = user_info["id"]
     await check_secret_access(secret_id, user_id, db, permission="write")
 
@@ -358,12 +377,16 @@ async def generate_ssh_key(
 
 
 @router.get("/{secret_id}/masked", response_model=SecretMaskedResponse)
+@_secret_limiter.limit("60/minute")
 async def get_secret_masked(
     secret_id: int,
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a secret with masked data (asterisks). No audit event."""
+    """Get a secret with masked data (asterisks). No audit event.
+
+    Rate limited to 60 requests per minute to prevent enumeration.
+    """
     user_id = user_info["id"]
     secret = await check_secret_access(secret_id, user_id, db, permission="read")
 

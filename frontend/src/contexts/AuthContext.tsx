@@ -9,7 +9,6 @@ interface User {
 }
 
 interface AuthContextType {
-  token: string | null
   user: User | null
   login: (username: string, password: string) => Promise<void>
   logout: () => void
@@ -21,73 +20,36 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 /**
- * Decode the JWT payload (base64url) to extract the exp claim.
- * Returns the expiration timestamp or null if the token is invalid.
+ * Extract the JWT token from httpOnly cookies.
+ * Returns null if no token cookie is found.
+ * Note: httpOnly cookies are not accessible via document.cookie in the browser,
+ * so this is a fallback for non-httpOnly tokens (e.g., during development).
  */
-function decodeJwtPayload(token: string): { exp: number } | null {
-  try {
-    const parts = token.split('.')
-    if (parts.length !== 3) return null
-    const payload = atob(parts[1])
-    const json = JSON.parse(payload)
-    if (json && typeof json.exp === 'number') return json
-  } catch {
-    // Invalid token format
-  }
-  return null
-}
-
-/** Check if a JWT token has expired. */
-function isTokenExpired(token: string): boolean {
-  const payload = decodeJwtPayload(token)
-  if (!payload) return true
-  return Date.now() >= payload.exp * 1000
+function getCookieToken(): string | null {
+  const match = document.cookie.match(/access_token=([^;]+)/)
+  return match ? match[1] : null
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Initialize token from localStorage and check expiration
+  // Fetch user info from server to verify token (cookie or Bearer header)
+  // and get accurate role info.
   useEffect(() => {
-    const stored = localStorage.getItem('token')
-    if (stored && !isTokenExpired(stored)) {
-      setToken(stored)
-    } else {
-      // Token expired or missing — clear it
-      localStorage.removeItem('token')
-    }
+    fetchUserInfo()
   }, [])
 
-  // Fetch user info from server to verify token and get accurate role info
-  useEffect(() => {
-    if (token) {
-      fetchUserInfo()
-    } else {
-      setUser(null)
-    }
-  }, [token])
-
   const fetchUserInfo = async () => {
-    if (!token) {
-      setUser(null)
-      return
-    }
-
     setIsLoading(true)
     try {
       const response = await fetch('/api/auth/me', {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include', // Send httpOnly cookies
       })
 
       if (!response.ok) {
-        // Token is invalid or expired
-        logout()
+        setUser(null)
         return
       }
 
@@ -100,7 +62,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         is_superuser: data.is_superuser,
       })
     } catch {
-      // Network error, token will be invalidated on next API call
       setUser(null)
     } finally {
       setIsLoading(false)
@@ -110,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (username: string, password: string) => {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
+      credentials: 'include', // Accept httpOnly cookies
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     })
@@ -119,19 +81,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(error.detail || 'Login failed')
     }
 
-    const data = await response.json()
-    setToken(data.access_token)
-    localStorage.setItem('token', data.access_token)
+    // Token is set as httpOnly cookie by the server.
+    // The JSON response also contains the token for non-cookie clients.
+    await fetchUserInfo()
   }
 
-  const logout = () => {
-    setToken(null)
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch {
+      // Ignore errors — the cookie is already set to expire
+    }
     setUser(null)
-    localStorage.removeItem('token')
   }
 
   return (
-    <AuthContext.Provider value={{ token, user, login, logout, isAuthenticated: !!token, isSuperuser: !!user?.is_superuser, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, isSuperuser: !!user?.is_superuser, isLoading }}>
       {children}
     </AuthContext.Provider>
   )

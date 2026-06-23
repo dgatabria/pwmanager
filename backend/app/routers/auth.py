@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -22,17 +22,35 @@ router = APIRouter(tags=["Authentication"])
 # Rate limiter for auth endpoints - shared with main.py
 limiter: Limiter = getattr(settings, "_limiter", Limiter(key_func=get_remote_address))
 
+# JWT cookie name
+JWT_COOKIE_NAME = "access_token"
 
-async def get_current_user(authorization: Annotated[str | None, Header()] = None):
+
+async def get_current_user(
+    request: Request = Depends(),
+    authorization: Annotated[str | None, Header()] = None,
+):
     """Dependency to get current user from JWT token.
-    
+
+    Checks the Authorization header first (Bearer token), then falls back
+    to the httpOnly cookie.
+
     Returns user_id (int).
     Centralized auth function - used by all routers.
     """
-    if not authorization or not authorization.startswith("Bearer "):
+    token = None
+
+    # 1. Try Authorization header (Bearer token)
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+
+    # 2. Fall back to httpOnly cookie
+    if not token and request.cookies:
+        token = request.cookies.get(JWT_COOKIE_NAME)
+
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    token = authorization.split(" ", 1)[1]
     try:
         payload = AuthService.decode_token(token)
         user_id = payload.get("sub")
@@ -43,20 +61,27 @@ async def get_current_user(authorization: Annotated[str | None, Header()] = None
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
-async def get_current_user_info(authorization: Annotated[str | None, Header()] = None, db: AsyncSession = Depends(get_db)):
+async def get_current_user_info(
+    request: Request = Depends(),
+    authorization: Annotated[str | None, Header()] = None,
+    db: AsyncSession = Depends(get_db),
+):
     """Dependency to get full current user info from JWT token.
-    
+
+    Checks the Authorization header first (Bearer token), then falls back
+    to the httpOnly cookie.
+
     Returns user dict with id, username, email, is_superuser.
     Centralized auth function - used by all routers.
     """
-    user_id = await get_current_user(authorization=authorization)
-    
+    user_id = await get_current_user(request=request, authorization=authorization)
+
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
-    
+
     return {
         "id": user.id,
         "username": user.username,
@@ -70,11 +95,14 @@ UserDep = Annotated[int, Depends(get_current_user)]
 UserDepInfo = Annotated[dict, Depends(get_current_user_info)]
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login")
 @limiter.limit(settings.RATE_LIMIT)
-async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(request: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT token.
-    
+
+    The JWT is set as an httpOnly, Secure cookie (for production HTTPS)
+    and also returned in the JSON body for clients that cannot use cookies.
+
     Rate limited to prevent brute force attacks.
     During maintenance mode, only superusers can log in.
     """
@@ -95,13 +123,25 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
         )
 
     # During maintenance mode, only superusers can log in
-    if is_maintenance_mode() and not user.is_superuser:
+    if await is_maintenance_mode() and not user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Service is temporarily unavailable. Maintenance in progress.",
         )
 
     token = AuthService.create_access_token(data={"sub": str(user.id)})
+
+    # Set httpOnly cookie as an additional auth mechanism
+    response.set_cookie(
+        key=JWT_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=True,        # Only send over HTTPS in production
+        samesite="lax",     # CSRF protection
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -151,7 +191,10 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(user_id: int = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def get_me(
+    user_id: int = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Get current user info (requires auth)."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -168,3 +211,13 @@ async def get_me(user_id: int = Depends(get_current_user), db: AsyncSession = De
         is_superuser=user.is_superuser,
         created_at=str(user.created_at),
     )
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    """Logout by clearing the httpOnly JWT cookie."""
+    response.delete_cookie(
+        key=JWT_COOKIE_NAME,
+        path="/",
+    )
+    return {"message": "Logged out successfully"}

@@ -767,7 +767,7 @@ async def admin_rotate_encryption_key(
     await require_superuser(current_user_id, db)
 
     # Put app in maintenance mode
-    set_maintenance_mode(True)
+    await set_maintenance_mode(True)
 
     try:
         # Get all active secrets
@@ -775,7 +775,7 @@ async def admin_rotate_encryption_key(
         all_secrets = result.scalars().all()
 
         if not all_secrets:
-            set_maintenance_mode(False)
+            await set_maintenance_mode(False)
             return {
                 "message": "Key rotation completed (no secrets to re-encrypt)",
                 "secrets_processed": 0,
@@ -806,7 +806,7 @@ async def admin_rotate_encryption_key(
         await db.commit()
 
         # Exit maintenance mode
-        set_maintenance_mode(False)
+        await set_maintenance_mode(False)
 
         return {
             "message": "Key rotation completed successfully",
@@ -819,7 +819,7 @@ async def admin_rotate_encryption_key(
 
     except Exception as e:
         # Ensure maintenance mode is exited even on error
-        set_maintenance_mode(False)
+        await set_maintenance_mode(False)
         raise HTTPException(
             status_code=500,
             detail=f"Key rotation failed: {str(e)}",
@@ -834,7 +834,9 @@ async def admin_rotation_status(
     """Get the current maintenance mode status."""
     await require_superuser(current_user_id, db)
 
+    in_maintenance = await is_maintenance_mode()
+
     return {
-        "maintenance_mode": is_maintenance_mode(),
-        "message": "System is in maintenance mode" if is_maintenance_mode() else "System is operational",
+        "maintenance_mode": in_maintenance,
+        "message": "System is in maintenance mode" if in_maintenance else "System is operational",
     }
