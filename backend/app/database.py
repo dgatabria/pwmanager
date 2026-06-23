@@ -22,7 +22,7 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and run pending migrations."""
     from app.models.user import User
     from app.models.group import Group
     from app.models.secret_group import SecretGroup
@@ -34,3 +34,7 @@ async def init_db():
     from app.models.saml_config import SAMLConfig
 
     await engine.create_all()
+
+    # Run pending migrations
+    from app.migrations import run_migrations
+    await run_migrations()

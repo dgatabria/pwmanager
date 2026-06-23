@@ -116,8 +116,16 @@ async def seed():
             ("Other", "General credentials", None),
         ]
 
+        # Use admin user (id=1) as owner of default groups
+        admin_id = admin.id
         for name, desc, parent_id in default_secret_groups:
-            sg = SecretGroup(name=name, description=desc, parent_id=parent_id, group_id=1)
+            sg = SecretGroup(
+                name=name,
+                description=desc,
+                parent_id=parent_id,
+                group_id=1,
+                owner_id=admin_id,
+            )
             session.add(sg)
 
         await session.commit()

@@ -7,7 +7,12 @@ from app.database import Base
 
 
 class SecretGroup(Base):
-    """Secret group for organizing secrets hierarchically."""
+    """Secret group for organizing secrets hierarchically.
+
+    Each secret group has an owner (the user who created it).
+    The owner controls who can access the group via the secret_group_members
+    junction table, which maps user groups to the secret group with permissions.
+    """
 
     __tablename__ = "secret_groups"
 
@@ -20,9 +25,15 @@ class SecretGroup(Base):
     group_id: Mapped[int] = mapped_column(
         ForeignKey("groups.id"), nullable=False
     )
+    owner_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(default=True)
 
     # Relationships
+    owner: Mapped["User"] = relationship(
+        "User", foreign_keys=[owner_id], lazy="select"
+    )
     parent: Mapped["SecretGroup | None"] = relationship(
         "SecretGroup", remote_side=[id], back_populates="children"
     )

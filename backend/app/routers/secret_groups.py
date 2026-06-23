@@ -1,16 +1,26 @@
-"""Secret groups management endpoints."""
+"""Secret groups management endpoints.
+
+Authorization model:
+- Any authenticated user can create secret groups.
+- The owner (creator) of a secret group can modify, delete, and manage access.
+- Access is granted to user groups via the secret_group_members junction table.
+- The list endpoint returns groups the user can access (owned + shared).
+"""
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.group import Group
 from app.models.secret_group import SecretGroup
 from app.models.secret_group_member import SecretGroupMember
 from app.models.user import User
+from app.models.user_group import UserGroup
 from app.schemas.secret_group import (
+    SecretGroupAccessUpdate,
     SecretGroupCreate,
     SecretGroupDetail,
     SecretGroupResponse,
@@ -23,17 +33,31 @@ router = APIRouter(prefix="/api/secret-groups", tags=["Secret Groups"])
 UserDep = Annotated[int, Depends(get_current_user)]
 
 
-async def require_superuser(current_user_id: UserDep, db: AsyncSession):
-    """Verify that the current user is a superuser."""
-    result = await db.execute(select(User).where(User.id == current_user_id))
-    user = result.scalar_one_or_none()
+async def _get_user_groups(user_id: int, db: AsyncSession) -> list[int]:
+    """Return the list of user group IDs the current user belongs to."""
+    result = await db.execute(
+        select(UserGroup.group_id).where(UserGroup.user_id == user_id)
+    )
+    return [row[0] for row in result.all()]
 
-    if not user or not user.is_superuser:
+
+async def _require_owner(group_id: int, current_user_id: int, db: AsyncSession):
+    """Verify the current user is the owner of the secret group."""
+    result = await db.execute(
+        select(SecretGroup).where(SecretGroup.id == group_id)
+    )
+    sg = result.scalar_one_or_none()
+
+    if not sg:
+        raise HTTPException(status_code=404, detail="Secret group not found")
+
+    if sg.owner_id != current_user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Superuser privileges required",
+            detail="Only the group owner can perform this action",
         )
-    return user
+
+    return sg
 
 
 @router.get("")
@@ -42,10 +66,29 @@ async def list_secret_groups(
     db: AsyncSession = Depends(get_db),
     group_id: int | None = Query(None),
 ):
-    """List all secret groups."""
-    query = select(SecretGroup).where(SecretGroup.is_active == True)
+    """List all secret groups the user can access (owned + shared)."""
+    # Get user group memberships
+    result = await db.execute(
+        select(UserGroup.group_id).where(UserGroup.user_id == user_id)
+    )
+    user_group_ids = [row[0] for row in result.all()]
+
+    # Build query: owned groups OR groups shared with user's groups
+    query = select(SecretGroup).where(
+        SecretGroup.is_active == True,
+        or_(
+            SecretGroup.owner_id == user_id,
+            SecretGroup.id.in_(
+                select(SecretGroupMember.secret_group_id).where(
+                    SecretGroupMember.group_id.in_(user_group_ids) if user_group_ids else [0]
+                )
+            )
+        ),
+    )
+
     if group_id:
         query = query.where(SecretGroup.group_id == group_id)
+
     query = query.order_by(SecretGroup.name)
 
     result = await db.execute(query)
@@ -58,6 +101,7 @@ async def list_secret_groups(
             description=g.description,
             parent_id=g.parent_id,
             group_id=g.group_id,
+            owner_id=g.owner_id,
             is_active=g.is_active,
         )
         for g in groups
@@ -70,18 +114,43 @@ async def create_secret_group(
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new secret group (superuser only)."""
-    await require_superuser(current_user_id, db)
+    """Create a new secret group. The creator becomes the owner."""
+    # Validate member_group_ids exist and user belongs to them
+    if group_data.member_group_ids:
+        result = await db.execute(
+            select(Group.id).where(
+                Group.id.in_(group_data.member_group_ids),
+                Group.is_active == True,
+            )
+        )
+        valid_group_ids = {row[0] for row in result.all()}
+        invalid = set(group_data.member_group_ids) - valid_group_ids
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot share with non-existent or inactive groups: {sorted(invalid)}",
+            )
 
     sg = SecretGroup(
         name=group_data.name,
         description=group_data.description,
         parent_id=group_data.parent_id,
         group_id=group_data.group_id,
+        owner_id=current_user_id,
     )
     db.add(sg)
     await db.commit()
     await db.refresh(sg)
+
+    # Grant access to specified user groups
+    if group_data.member_group_ids:
+        for gid in group_data.member_group_ids:
+            sgm = SecretGroupMember(
+                secret_group_id=sg.id,
+                group_id=gid,
+            )
+            db.add(sgm)
+        await db.commit()
 
     return SecretGroupResponse(
         id=sg.id,
@@ -89,6 +158,7 @@ async def create_secret_group(
         description=sg.description,
         parent_id=sg.parent_id,
         group_id=sg.group_id,
+        owner_id=sg.owner_id,
         is_active=sg.is_active,
     )
 
@@ -99,15 +169,40 @@ async def get_secret_group_detail(
     user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get secret group details."""
+    """Get secret group details (must be owner or have access)."""
     result = await db.execute(
-        select(SecretGroup)
-        .where(SecretGroup.id == group_id)
+        select(SecretGroup).where(SecretGroup.id == group_id)
     )
     sg = result.scalar_one_or_none()
 
     if not sg:
         raise HTTPException(status_code=404, detail="Secret group not found")
+
+    # Check access: owner or shared with user's groups
+    result = await db.execute(
+        select(UserGroup.group_id).where(UserGroup.user_id == user_id)
+    )
+    user_group_ids = [row[0] for row in result.all()]
+
+    is_owner = sg.owner_id == user_id
+    has_access = is_owner or (
+        user_group_ids and
+        sg.id in [
+            row[0] for row in await db.execute(
+                select(SecretGroupMember.secret_group_id).where(
+                    SecretGroupMember.group_id.in_(user_group_ids)
+                )
+            ).all()
+        ]
+    )
+
+    if not has_access:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Get owner info
+    result = await db.execute(select(User).where(User.id == sg.owner_id))
+    owner = result.scalar_one_or_none()
+    owner_username = owner.username if owner else ""
 
     # Get associated user groups
     result = await db.execute(
@@ -135,6 +230,8 @@ async def get_secret_group_detail(
         description=sg.description,
         parent_id=sg.parent_id,
         group_id=sg.group_id,
+        owner_id=sg.owner_id,
+        owner_username=owner_username,
         is_active=sg.is_active,
         group_ids=group_ids,
         child_count=len(children),
@@ -149,16 +246,8 @@ async def update_secret_group(
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a secret group (superuser only)."""
-    await require_superuser(current_user_id, db)
-
-    result = await db.execute(
-        select(SecretGroup).where(SecretGroup.id == group_id)
-    )
-    sg = result.scalar_one_or_none()
-
-    if not sg:
-        raise HTTPException(status_code=404, detail="Secret group not found")
+    """Update a secret group (owner only)."""
+    sg = await _require_owner(group_id, current_user_id, db)
 
     if group_data.name is not None:
         sg.name = group_data.name
@@ -166,6 +255,38 @@ async def update_secret_group(
         sg.description = group_data.description
     if group_data.is_active is not None:
         sg.is_active = group_data.is_active
+
+    # Update member access if provided
+    if group_data.member_group_ids is not None:
+        # Validate group IDs
+        result = await db.execute(
+            select(Group.id).where(
+                Group.id.in_(group_data.member_group_ids),
+                Group.is_active == True,
+            )
+        )
+        valid_group_ids = {row[0] for row in result.all()}
+        invalid = set(group_data.member_group_ids) - valid_group_ids
+        if invalid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot share with non-existent or inactive groups: {sorted(invalid)}",
+            )
+
+        # Remove existing memberships
+        await db.execute(
+            SecretGroupMember.__table__.delete().where(
+                SecretGroupMember.secret_group_id == group_id
+            )
+        )
+
+        # Add new memberships
+        for gid in group_data.member_group_ids:
+            sgm = SecretGroupMember(
+                secret_group_id=group_id,
+                group_id=gid,
+            )
+            db.add(sgm)
 
     await db.commit()
     await db.refresh(sg)
@@ -176,6 +297,7 @@ async def update_secret_group(
         description=sg.description,
         parent_id=sg.parent_id,
         group_id=sg.group_id,
+        owner_id=sg.owner_id,
         is_active=sg.is_active,
     )
 
@@ -186,18 +308,53 @@ async def delete_secret_group(
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Soft delete a secret group (superuser only)."""
-    await require_superuser(current_user_id, db)
-
-    result = await db.execute(
-        select(SecretGroup).where(SecretGroup.id == group_id)
-    )
-    sg = result.scalar_one_or_none()
-
-    if not sg:
-        raise HTTPException(status_code=404, detail="Secret group not found")
+    """Soft delete a secret group (owner only)."""
+    sg = await _require_owner(group_id, current_user_id, db)
 
     sg.is_active = False
+    await db.commit()
+
+
+@router.post("/{group_id}/access", status_code=200)
+async def update_group_access(
+    group_id: int,
+    access_data: SecretGroupAccessUpdate,
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update which user groups can access this secret group (owner only)."""
+    sg = await _require_owner(group_id, current_user_id, db)
+
+    # Validate group IDs
+    result = await db.execute(
+        select(Group.id).where(
+            Group.id.in_(access_data.member_group_ids),
+            Group.is_active == True,
+        )
+    )
+    valid_group_ids = {row[0] for row in result.all()}
+    invalid = set(access_data.member_group_ids) - valid_group_ids
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot share with non-existent or inactive groups: {sorted(invalid)}",
+        )
+
+    # Remove existing memberships
+    await db.execute(
+        SecretGroupMember.__table__.delete().where(
+            SecretGroupMember.secret_group_id == group_id
+        )
+    )
+
+    # Add new memberships
+    for gid in access_data.member_group_ids:
+        sgm = SecretGroupMember(
+            secret_group_id=group_id,
+            group_id=gid,
+        )
+        db.add(sgm)
+
     await db.commit()
 
 
@@ -208,8 +365,18 @@ async def add_group_to_secret_group(
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Add a user group to a secret group (RBAC, superuser only)."""
-    await require_superuser(current_user_id, db)
+    """Add a user group to a secret group (owner only)."""
+    await _require_owner(group_id, current_user_id, db)
+
+    # Validate group exists and is active
+    result = await db.execute(
+        select(Group.id).where(Group.id == user_group_id, Group.is_active == True)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Group does not exist or is inactive",
+        )
 
     result = await db.execute(
         select(SecretGroupMember)
@@ -236,8 +403,8 @@ async def remove_group_from_secret_group(
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Remove a user group from a secret group (superuser only)."""
-    await require_superuser(current_user_id, db)
+    """Remove a user group from a secret group (owner only)."""
+    await _require_owner(group_id, current_user_id, db)
 
     result = await db.execute(
         select(SecretGroupMember)
