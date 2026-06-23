@@ -60,11 +60,16 @@ async def admin_list_users(
     db: AsyncSession = Depends(get_db),
     search: str | None = Query(None),
     is_active: bool | None = Query(None),
+    include_deleted: bool = Query(False, description="Include soft-deleted users"),
 ):
-    """List all users with filtering (superuser only)."""
+    """List all users with filtering (superuser only).
+
+    By default, soft-deleted users are excluded. Use include_deleted=true
+    to include users marked for deletion.
+    """
     await require_superuser(current_user_id, db)
     
-    query = select(User).order_by(User.created_at.desc())
+    query = select(User).where(User.is_deleted == False).order_by(User.created_at.desc())
     
     if search:
         query = query.where(
@@ -270,10 +275,22 @@ async def admin_toggle_active(
 async def admin_delete_user(
     user_id: int,
     current_user_id: UserDep,
+    confirm: str = Query(..., description="Explicit confirmation required. Set to 'true' to proceed."),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a user permanently (superuser only)."""
+    """Soft-delete a user (superuser only).
+
+    Requires explicit confirmation via confirm=true query parameter.
+    This prevents accidental data loss by ensuring the admin intentionally
+    marks the user for deletion rather than permanently removing them.
+    """
     await require_superuser(current_user_id, db)
+    
+    if confirm.lower() != "true":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation required. Pass confirm=true to proceed with deletion.",
+        )
     
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -281,14 +298,16 @@ async def admin_delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Prevent superuser from deleting themselves
+    # Prevent deleting yourself
     if current_user_id == user_id:
         raise HTTPException(
             status_code=400,
             detail="Cannot delete your own account",
         )
     
-    await db.delete(user)
+    # Soft-delete: mark as deleted instead of permanent removal
+    user.is_deleted = True
+    user.is_active = False
     await db.commit()
 
 

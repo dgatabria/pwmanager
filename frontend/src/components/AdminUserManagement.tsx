@@ -111,9 +111,9 @@ export default function AdminUserManagement() {
   }
 
   const handleDeleteUser = async (userId: number) => {
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) return
+    if (!confirm('Are you sure you want to soft-delete this user? They will be marked as deleted but their data will be preserved. Pass confirm=true to proceed.')) return
     try {
-      await api.delete(`/api/admin/users/${userId}`)
+      await api.delete(`/api/admin/users/${userId}?confirm=true`)
       await fetchData()
     } catch (err: any) {
       setError(err.message || 'Failed to delete user')
