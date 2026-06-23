@@ -131,6 +131,148 @@ En producción, **nunca** uses valores por defecto ni hardcodeados. Todas estas 
 ./deploy.sh clean     # Elimina todos los secretos y archivos generados
 ```
 
+## Password Manager CLI
+
+Herramienta de línea de comandos para interactuar con el Password Manager desde la terminal. Funciona en **Linux** y **Windows** (con Python 3.8+).
+
+### Instalación
+
+```bash
+# Clonar el repositorio
+git clone https://github.com/dgatabria/ia-tests-2.git
+cd ia-tests-2
+
+# Instalar dependencia
+pip install -r backend/cli/requirements.txt
+```
+
+### Configuración de API Key
+
+La CLI lee la API key en este orden de prioridad:
+
+1. **Flag** `--api-key <key>`
+2. **Variable de entorno** `$SECRETSMANAGER_API_KEY`
+3. **Archivo** `~/.secretsmanager/apikey` (con permisos `0600`)
+
+```bash
+# Opción 1: Variable de entorno
+export SECRETSMANAGER_API_KEY=tu-api-key-aqui
+
+# Opción 2: Guardar en archivo (recomendado)
+./scripts/passwordmanager setup
+# O manualmente:
+mkdir -p ~/.secretsmanager
+echo "tu-api-key-aqui" > ~/.secretsmanager/apikey
+chmod 600 ~/.secretsmanager/apikey
+
+# Opción 3: Flag directo
+./scripts/passwordmanager --api-key tu-api-key-aqui list secret
+```
+
+### Configuración de Base URL
+
+```bash
+# Variable de entorno
+export SECRETSMANAGER_BASE_URL=https://pm.example.com
+
+# Flag directo
+./scripts/passwordmanager --base-url https://pm.example.com list secret
+```
+
+### Uso
+
+```bash
+# Lista todos los secretos
+./scripts/passwordmanager list secret
+
+# Lista secretos filtrados por grupo
+./scripts/passwordmanager list secret --group 1
+
+# Lista todos los grupos de secretos
+./scripts/passwordmanager list group
+
+# Crear un nuevo secreto (interactivo)
+./scripts/passwordmanager create secret
+
+# Crear un secreto con datos en línea de comandos (no interactivo)
+./scripts/passwordmanager create secret "Mi Contraseña" -t password -D "secreto123" -g 1
+
+# Generar y guardar una nueva SSH key
+./scripts/passwordmanager create secret-ssh
+
+# Recuperar un secreto por ID
+./scripts/passwordmanager retrieve secret 1
+
+# Recuperar un secreto por nombre
+./scripts/passwordmanager retrieve secret "Mi Contraseña"
+
+# Eliminar un secreto
+./scripts/passwordmanager delete secret 1
+
+# Crear un nuevo grupo de secretos
+./scripts/passwordmanager create group "Infraestructura" -d "Secretos de infra"
+
+# Listar API tokens
+./scripts/passwordmanager token list
+
+# Crear un nuevo API token
+./scripts/passwordmanager token create "Mi Token"
+```
+
+### Sintaxis General
+
+```
+passwordmanager <comando> [subcomando] [argumento]
+```
+
+| Comando | Subcomando | Descripción |
+|---------|------------|-------------|
+| `list` | `secret` | Listar todos los secretos |
+| `list` | `group` | Listar todos los grupos de secretos |
+| `create` | `secret` | Crear un nuevo secreto (interactivo) |
+| `create` | `secret-ssh` | Generar y guardar una SSH key |
+| `create` | `group` | Crear un nuevo grupo de secretos |
+| `retrieve` | `secret` | Recuperar un secreto por ID o nombre |
+| `retrieve` | `secret-ssh` | Recuperar una SSH key |
+| `delete` | `secret` | Eliminar un secreto |
+| `delete` | `group` | Eliminar un grupo de secretos |
+| `token` | `list` | Listar API tokens |
+| `token` | `create` | Crear un nuevo API token |
+| `token` | `revoke` | Revocar un API token |
+| `setup` | — | Guardar API key en archivo |
+
+### Ejemplos Avanzados
+
+```bash
+# Usar con URL remota y token en variable de entorno
+SECRETSMANAGER_BASE_URL=https://pm.prod.com \
+SECRETSMANAGER_API_KEY=abc123 \
+./scripts/passwordmanager list secret
+
+# Crear SSH key de 2048 bits con comentario personalizado
+./scripts/passwordmanager create secret-ssh -k 2048 -c "dev@laptop"
+
+# Crear secreto con username y URL
+./scripts/passwordmanager create secret "GitHub" -t password -u "miusuario" -U "https://github.com" -D "secreto123"
+
+# Output JSON (para scripts)
+./scripts/passwordmanager list secret --json
+```
+
+### Estructura del CLI
+
+```
+backend/cli/
+├── __init__.py              # Paquete Python
+├── config.py                # Cargador de configuración (API key, base URL)
+├── api.py                   # Cliente HTTP (PMClient)
+├── utils.py                 # Colores, tablas, helpers
+├── passwordmanager.py       # Entry point con argparse
+└── requirements.txt         # Dependencia: requests>=2.28.0
+scripts/
+└── passwordmanager          # Wrapper bash (Linux/macOS)
+```
+
 ## Desarrollo Local (sin Docker)
 
 ### Backend
