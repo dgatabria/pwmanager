@@ -98,6 +98,21 @@ docker secret create encryption_key <(openssl rand -base64 32)
 
 El backend lee automáticamente de `/run/secrets/<nombre>` como fallback si no hay variables de entorno.
 
+### Variables de entorno obligatorias en producción
+
+En producción, **nunca** uses valores por defecto ni hardcodeados. Todas estas variables deben provenir de un gestor de secretos (Vault, AWS Secrets Manager, etc.) o Docker secrets:
+
+| Variable | Descripción | Cómo generar |
+|----------|-------------|--------------|
+| `DATABASE_URL` | Connection string de PostgreSQL | `postgresql+asyncpg://user:pass@host:5432/dbname` |
+| `ENCRYPTION_KEY` | Clave Fernet (32 bytes base64) para encriptar secretos en reposo | `openssl rand -base64 32` |
+| `POSTGRES_PASSWORD` | Contraseña del usuario PostgreSQL | `openssl rand -hex 32` |
+| `RSA_KEY_PASSPHRASE` | **Opcional pero recomendado**: passphrase para cifrar la clave privada RSA en disco | Cualquier string aleatorio seguro |
+
+> ⚠️ **Sin `ENCRYPTION_KEY`, todos los secretos encriptados se pierden para siempre.**
+> ⚠️ **Sin `POSTGRES_PASSWORD`, la base de datos no arranca.**
+> ⚠️ **Si no se configura `RSA_KEY_PASSPHRASE`, la clave privada JWT se almacena sin cifrar en disco — cualquiera con acceso al filesystem puede forjar tokens de admin.**
+
 > ⚠️ **Importante para producción**:
 > - Configurar un reverse proxy (nginx/Traefik) con TLS terminando HTTPS
 > - El `docker-compose.yml` expone puertos sin HTTPS
@@ -156,6 +171,11 @@ El frontend dev server proxyea las peticiones `/api/*` al backend en `localhost:
 
 ```bash
 cd backend
+
+# Exportar las variables obligatorias (las mismas que para el backend)
+export DATABASE_URL=postgresql+asyncpg://postgres:$(cat secrets/postgres_password.txt)@localhost:5432/password_manager
+export ENCRYPTION_KEY=$(cat secrets/encryption_key.txt)
+
 python seed.py
 ```
 

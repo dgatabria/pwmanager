@@ -1,15 +1,40 @@
-"""Seed script to create initial admin user and default groups."""
+"""Seed script to create initial admin user and default groups.
+
+Required environment variables (must be set before running):
+  - DATABASE_URL:      PostgreSQL connection string (e.g. postgresql+asyncpg://...)
+  - ENCRYPTION_KEY:    32-byte base64-encoded Fernet key
+
+In production these must come from a secrets manager, Docker secrets,
+or a vault — never from hardcoded defaults.
+"""
 
 import asyncio
 import os
+import sys
 import secrets
 import string
 
-os.environ.setdefault("SECRET_KEY", "change-this-to-a-secure-random-string-in-production")
-os.environ.setdefault(
-    "ENCRYPTION_KEY",
-    "change-this-to-a-32-byte-base64-encoded-key",
-)
+
+def _require_env(name: str) -> str:
+    """Read an environment variable and exit if it is not set.
+
+    This ensures that placeholder/default values are never used in production.
+    """
+    value = os.environ.get(name)
+    if not value:
+        print(
+            f"ERROR: Required environment variable '{name}' is not set. "
+            f"Set it via environment variables, Docker secrets, or a vault.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return value
+
+
+# ─── Startup validation ─────────────────────────────────────────────
+# Require secrets at startup — never fall back to placeholders
+_require_env("DATABASE_URL")
+_require_env("ENCRYPTION_KEY")
 
 from sqlalchemy import select
 
