@@ -47,13 +47,20 @@ def is_maintenance_mode() -> bool:
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    """Add security headers to all responses."""
+    """Add security headers to all responses.
+
+    Removes the deprecated X-XSS-Protection header (deprecated in all modern
+    browsers and can introduce XSS vulnerabilities in Chrome). Adds
+    Referrer-Policy and Permissions-Policy for defence-in-depth.
+    """
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
+    # X-XSS-Protection removed: deprecated and can introduce XSS vulnerabilities
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
     response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -65,7 +72,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Api-Key"],
 )
 

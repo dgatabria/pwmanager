@@ -57,8 +57,10 @@ async def get_current_user_with_api_key(
                     "full_name": payload.get("full_name", ""),
                     "is_superuser": payload.get("is_superuser", False),
                 }
-        except Exception:
-            pass
+        except Exception as exc:
+            # JWT validation failed — log for audit trail and fall through
+            # to API key auth only if no Bearer token was provided at all.
+            logging.warning("JWT validation failed: %s", exc)
 
     # Try API key if JWT failed or wasn't provided
     if user_id is None and (x_api_key or (authorization and authorization.startswith("ApiKey "))):
