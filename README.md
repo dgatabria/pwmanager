@@ -133,17 +133,21 @@ En producción, **nunca** uses valores por defecto ni hardcodeados. Todas estas 
 
 ## Password Manager CLI
 
-Herramienta de línea de comandos para interactuar con el Password Manager desde la terminal. Funciona en **Linux** y **Windows** (con Python 3.8+).
+Herramienta de línea de comandos **standalone** para interactuar con el Password Manager desde la terminal. Funciona en **Linux** y **Windows** (con Python 3.8+).
+
+**Cero dependencias del servidor** — un cliente puede clonar el repo, borrar todo lo que no usa (backend, frontend, docker-compose.yml, etc.), quedarse solo con `cli/` y `scripts/`, y apuntar la herramienta a cualquier servidor remoto.
 
 ### Instalación
 
 ```bash
-# Clonar el repositorio
+# Opción A: Clonar todo y usar solo la CLI
 git clone https://github.com/dgatabria/ia-tests-2.git
 cd ia-tests-2
+rm -rf backend frontend docker-compose.yml deploy.sh .env*  # lo que no necesitás
+pip install -r cli/requirements.txt
 
-# Instalar dependencia
-pip install -r backend/cli/requirements.txt
+# Opción B: Instalar desde cualquier lugar (ya clonado)
+pip install -r cli/requirements.txt
 ```
 
 ### Configuración de API Key
@@ -151,7 +155,7 @@ pip install -r backend/cli/requirements.txt
 La CLI lee la API key en este orden de prioridad:
 
 1. **Flag** `--api-key <key>`
-2. **Variable de entorno** `$SECRETSMANAGER_API_KEY`
+2. **Variable de entorno** ``
 3. **Archivo** `~/.secretsmanager/apikey` (con permisos `0600`)
 
 ```bash
@@ -245,9 +249,7 @@ passwordmanager <comando> [subcomando] [argumento]
 
 ```bash
 # Usar con URL remota y token en variable de entorno
-SECRETSMANAGER_BASE_URL=https://pm.prod.com \
-SECRETSMANAGER_API_KEY=abc123 \
-./scripts/passwordmanager list secret
+SECRETSMANAGER_BASE_URL=https://pm.prod.com SECRETSMANAGER_API_KEY=abc123 ./scripts/passwordmanager list secret
 
 # Crear SSH key de 2048 bits con comentario personalizado
 ./scripts/passwordmanager create secret-ssh -k 2048 -c "dev@laptop"
@@ -262,15 +264,15 @@ SECRETSMANAGER_API_KEY=abc123 \
 ### Estructura del CLI
 
 ```
-backend/cli/
-├── __init__.py              # Paquete Python
-├── config.py                # Cargador de configuración (API key, base URL)
-├── api.py                   # Cliente HTTP (PMClient)
-├── utils.py                 # Colores, tablas, helpers
-├── passwordmanager.py       # Entry point con argparse
-└── requirements.txt         # Dependencia: requests>=2.28.0
+cli/                          # CLI standalone (sin dependencias del servidor)
+├── __init__.py               # Paquete Python
+├── config.py                 # Cargador de configuración (API key, base URL)
+├── api.py                    # Cliente HTTP (PMClient)
+├── utils.py                  # Colores, tablas, helpers
+├── passwordmanager.py        # Entry point con argparse
+└── requirements.txt          # Dependencia: requests>=2.28.0
 scripts/
-└── passwordmanager          # Wrapper bash (Linux/macOS)
+└── passwordmanager           # Wrapper bash (Linux/macOS)
 ```
 
 ## Desarrollo Local (sin Docker)
@@ -327,7 +329,14 @@ python seed.py
 
 ```
 ia-tests-2/
-├── backend/                      # Backend FastAPI
+├── cli/                          # CLI standalone (sin dependencias del servidor)
+│   ├── __init__.py               # Package init
+│   ├── config.py                 # Config loader (API key, base URL)
+│   ├── api.py                    # PMClient HTTP client
+│   ├── utils.py                  # Terminal colors, table formatter
+│   ├── passwordmanager.py        # Main CLI entry point
+│   └── requirements.txt          # Dependency: requests>=2.28.0
+├── backend/                      # Backend FastAPI (server-side only)
 │   ├── app/
 │   │   ├── main.py               # Aplicación FastAPI + middleware
 │   │   ├── config.py             # Configuración de secretos
@@ -352,13 +361,6 @@ ia-tests-2/
 │   │   └── utils/
 │   │       ├── security.py       # Password hashing (bcrypt)
 │   │       └── rsa_keys.py       # RSA key pair management
-│   ├── cli/                      # CLI tool for command-line access
-│   │   ├── __init__.py           # Package init
-│   │   ├── config.py             # Config loader (API key, base URL)
-│   │   ├── api.py                # PMClient HTTP client
-│   │   ├── utils.py              # Terminal colors, table formatter
-│   │   ├── passwordmanager.py    # Main CLI entry point
-│   │   └── requirements.txt      # Dependency: requests>=2.28.0
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   ├── seed.py                   # Seed script (admin + grupos)
