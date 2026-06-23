@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # Rate limiting - requests per time window
     RATE_LIMIT: str = "5/minute"  # Default: 5 requests per minute for auth endpoints
 
+    # Trusted proxy IPs for X-Forwarded-For validation (comma-separated)
+    # When configured, X-Forwarded-For is only trusted if the request
+    # comes from one of these IPs. Otherwise, the direct connection IP is used.
+    TRUSTED_PROXY_IPS: str = ""
+
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
     class Config:
@@ -74,6 +79,12 @@ class Settings(BaseSettings):
     def get_allowed_origins_list(self) -> List[str]:
         """Parse ALLOWED_ORIGINS into a list of origin strings."""
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+    def get_trusted_proxy_ips(self) -> set[str]:
+        """Parse TRUSTED_PROXY_IPS into a set of IP addresses."""
+        if not self.TRUSTED_PROXY_IPS:
+            return set()
+        return {ip.strip() for ip in self.TRUSTED_PROXY_IPS.split(",") if ip.strip()}
 
 
 # ─── Startup validation ───────────────────────────────────────────────

@@ -6,6 +6,7 @@ from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.audit_log import AuditLog
 
 
@@ -17,19 +18,43 @@ class AuditService:
     EVENT_VIEW = "secret_view"
 
     @staticmethod
+    def _is_trusted_proxy(request: Request) -> bool:
+        """Check if the request comes from a trusted proxy.
+
+        If TRUSTED_PROXY_IPS is configured, only requests from those IPs
+        are allowed to set X-Forwarded-For. Otherwise, all proxies are
+        trusted (backward-compatible default).
+        """
+        trusted_ips = settings.get_trusted_proxy_ips()
+        if not trusted_ips:
+            # No trusted proxies configured — trust all (backward-compatible)
+            return True
+
+        # Check the direct connection IP against the trusted list
+        if request.client:
+            return request.client.host in trusted_ips
+
+        return False
+
+    @staticmethod
     def _extract_client_ip(request: Request) -> str:
-        """Extract real client IP from request, handling proxies."""
-        # Check X-Forwarded-For header (behind reverse proxy)
-        forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
+        """Extract real client IP from request, handling proxies.
 
-        # Check X-Real-IP header
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip
+        X-Forwarded-For is only trusted when the request originates from
+        a known reverse proxy IP (configured via TRUSTED_PROXY_IPS).
+        Otherwise, the direct connection IP is used to prevent spoofing.
+        """
+        # Only trust X-Forwarded-For if the request comes from a trusted proxy
+        if AuditService._is_trusted_proxy(request):
+            forwarded_for = request.headers.get("x-forwarded-for")
+            if forwarded_for:
+                return forwarded_for.split(",")[0].strip()
 
-        # Fall back to connection host
+            real_ip = request.headers.get("x-real-ip")
+            if real_ip:
+                return real_ip
+
+        # Fall back to direct connection IP (untrusted proxy or no proxy)
         if request.client:
             return request.client.host
 
