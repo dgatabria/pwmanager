@@ -2,13 +2,14 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.secret_group import SecretGroup
 from app.models.secret_group_member import SecretGroupMember
+from app.models.user import User
 from app.schemas.secret_group import (
     SecretGroupCreate,
     SecretGroupDetail,
@@ -20,6 +21,19 @@ from app.routers.auth import get_current_user
 router = APIRouter(prefix="/api/secret-groups", tags=["Secret Groups"])
 
 UserDep = Annotated[int, Depends(get_current_user)]
+
+
+async def require_superuser(current_user_id: UserDep, db: AsyncSession):
+    """Verify that the current user is a superuser."""
+    result = await db.execute(select(User).where(User.id == current_user_id))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superuser privileges required",
+        )
+    return user
 
 
 @router.get("")
@@ -53,10 +67,12 @@ async def list_secret_groups(
 @router.post("", response_model=SecretGroupResponse, status_code=201)
 async def create_secret_group(
     group_data: SecretGroupCreate,
-    user_id: UserDep,
+    current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new secret group."""
+    """Create a new secret group (superuser only)."""
+    await require_superuser(current_user_id, db)
+
     sg = SecretGroup(
         name=group_data.name,
         description=group_data.description,
@@ -130,10 +146,12 @@ async def get_secret_group_detail(
 async def update_secret_group(
     group_id: int,
     group_data: SecretGroupUpdate,
-    user_id: UserDep,
+    current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a secret group."""
+    """Update a secret group (superuser only)."""
+    await require_superuser(current_user_id, db)
+
     result = await db.execute(
         select(SecretGroup).where(SecretGroup.id == group_id)
     )
@@ -165,10 +183,12 @@ async def update_secret_group(
 @router.delete("/{group_id}", status_code=204)
 async def delete_secret_group(
     group_id: int,
-    user_id: UserDep,
+    current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Soft delete a secret group."""
+    """Soft delete a secret group (superuser only)."""
+    await require_superuser(current_user_id, db)
+
     result = await db.execute(
         select(SecretGroup).where(SecretGroup.id == group_id)
     )
@@ -185,10 +205,12 @@ async def delete_secret_group(
 async def add_group_to_secret_group(
     group_id: int,
     user_group_id: int,
-    user_id: UserDep,
+    current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Add a user group to a secret group (RBAC)."""
+    """Add a user group to a secret group (RBAC, superuser only)."""
+    await require_superuser(current_user_id, db)
+
     result = await db.execute(
         select(SecretGroupMember)
         .where(
@@ -211,10 +233,12 @@ async def add_group_to_secret_group(
 async def remove_group_from_secret_group(
     group_id: int,
     user_group_id: int,
-    user_id: UserDep,
+    current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Remove a user group from a secret group."""
+    """Remove a user group from a secret group (superuser only)."""
+    await require_superuser(current_user_id, db)
+
     result = await db.execute(
         select(SecretGroupMember)
         .where(

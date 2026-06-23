@@ -20,7 +20,7 @@ echo "🔐 Generating secrets for ia-tests-2..."
 mkdir -p "$SCRIPT_DIR/backend/secrets"
 
 # Generate secrets
-echo "  - postgres_password"
+echo "  - postgres_password (superuser, for DB container only)"
 openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/postgres_password.txt"
 
 echo "  - secret_key (JWT)"
@@ -28,6 +28,9 @@ openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/secret_key.txt"
 
 echo "  - encryption_key (Fernet)"
 openssl rand -base64 32 > "$SCRIPT_DIR/backend/secrets/encryption_key.txt"
+
+echo "  - app_password (dedicated app user, least-privilege)"
+openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/app_password.txt"
 
 # Create .env.db
 cat > "$SCRIPT_DIR/.env.db" <<EOF
@@ -42,7 +45,8 @@ EOF
 cat > "$SCRIPT_DIR/.env.backend" <<EOF
 # Local development backend configuration
 # DO NOT commit this file to version control
-DATABASE_URL=postgresql+asyncpg://postgres:$(cat "$SCRIPT_DIR/backend/secrets/postgres_password.txt")@db:5432/password_manager
+# The backend connects as the dedicated app user (not superuser)
+DATABASE_URL=postgresql+asyncpg://password_manager_app:$(cat "$SCRIPT_DIR/backend/secrets/app_password.txt")@db:5432/password_manager
 ENCRYPTION_KEY=$(cat "$SCRIPT_DIR/backend/secrets/encryption_key.txt")
 EOF
 
@@ -56,3 +60,6 @@ echo "  3. Run docker-compose up to start the application"
 echo ""
 echo "⚠️  WARNING: These secrets are critical. Back them up securely."
 echo "            If lost, all encrypted data becomes unrecoverable."
+echo ""
+echo "ℹ️  The app will connect as 'password_manager_app' (least-privilege user),"
+echo "    not as the 'postgres' superuser. Run './deploy.sh dev' to create the user."
