@@ -1,5 +1,6 @@
 """API Token management endpoints."""
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -122,7 +123,8 @@ async def generate_token(
             expires_at=token_data.expires_at,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate token: {str(e)}")
+        logging.error("Failed to generate API token for user %s: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to generate token. Please try again or contact support.")
 
     return APITokenCreateResponse(
         token=plain_token,
@@ -155,7 +157,8 @@ async def recycle_token(
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to recycle token: {str(e)}")
+        logging.error("Failed to recycle API token for user %s: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to recycle token. Please try again or contact support.")
 
     return APITokenRecycleResponse(
         new_token=new_token,
