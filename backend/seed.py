@@ -79,8 +79,9 @@ async def seed():
             print("Admin user already exists. Skipping seed.")
             return
 
-        # Generate a cryptographically secure random password
-        admin_password = _generate_secure_password(32)
+        # Use a known initial password for seeded accounts.
+        # Users are forced to change it on first login.
+        admin_password = "DevAdmin123!@#"
         hashed = SecurityUtils.hash_password(admin_password)
         admin = User(
             username="admin",
@@ -88,11 +89,12 @@ async def seed():
             hashed_password=hashed,
             full_name="System Administrator",
             is_superuser=True,
+            password_change_required=True,
         )
         session.add(admin)
         await session.commit()
         print(f"✓ Created admin user (password: {admin_password})")
-        print("⚠️  WARNING: Save this password securely. It will not be shown again.")
+        print("⚠️  You MUST change this password on first login.")
 
         # Create default groups
         default_groups = [

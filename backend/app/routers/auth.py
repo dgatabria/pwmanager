@@ -143,6 +143,9 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
     LOCKOUT_DURATION_MINUTES.
 
     During maintenance mode, only superusers can log in.
+
+    Returns password_change_required flag to indicate if the user must
+    change their password on first login.
     """
     result = await db.execute(select(User).where(User.username == request.username))
     user = result.scalar_one_or_none()
@@ -230,7 +233,43 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
         path="/",
     )
 
-    return {"access_token": token, "token_type": "bearer"}
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "password_change_required": user.password_change_required,
+    }
+
+
+@router.post("/change-password")
+@limiter.limit(settings.RATE_LIMIT)
+async def change_password(
+    request: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user),
+):
+    """Change the authenticated user's password.
+
+    Validates the new password strength, hashes it, stores it, and clears
+    the password_change_required flag so the user is not prompted again.
+    """
+    # Validate password strength
+    is_valid, error_msg = SecurityUtils.validate_password_strength(request.new_password)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.hashed_password = SecurityUtils.hash_password(request.new_password)
+    user.password_change_required = False
+    # Invalidate all existing sessions
+    user.token_version += 1
+    await db.commit()
+
+    return {"message": "Password updated successfully"}
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

@@ -10,6 +10,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null
+  passwordChangeRequired: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => void
   isAuthenticated: boolean
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [passwordChangeRequired, setPasswordChangeRequired] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
   // Fetch user info from server to verify token (cookie or Bearer header)
@@ -70,6 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(error.detail || 'Login failed')
     }
 
+    const data = await response.json()
+    setPasswordChangeRequired(data.password_change_required ?? false)
+
     // Token is set as httpOnly cookie by the server.
     // The JSON response also contains the token for non-cookie clients.
     await fetchUserInfo()
@@ -88,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, isSuperuser: !!user?.is_superuser, isLoading }}>
+    <AuthContext.Provider value={{ user, passwordChangeRequired, login, logout, isAuthenticated: !!user, isSuperuser: !!user?.is_superuser, isLoading }}>
       {children}
     </AuthContext.Provider>
   )

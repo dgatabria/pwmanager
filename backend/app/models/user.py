@@ -29,6 +29,8 @@ class User(Base):
     # Token version — incremented on each login to invalidate all previously
     # issued JWT tokens (session fixation prevention).
     token_version: Mapped[int] = mapped_column(Integer, default=0)
+    # Force password change on first login (seeded accounts).
+    password_change_required: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

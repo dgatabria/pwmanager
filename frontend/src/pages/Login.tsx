@@ -7,7 +7,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, passwordChangeRequired } = useAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -17,7 +17,11 @@ export default function Login() {
 
     try {
       await login(username, password)
-      navigate('/')
+      if (passwordChangeRequired) {
+        navigate('/change-password')
+      } else {
+        navigate('/')
+      }
     } catch (err: any) {
       setError(err.message || 'Invalid credentials')
     } finally {
