@@ -10,12 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.main import set_maintenance_mode, is_maintenance_mode
 from app.models.user import User
 from app.models.group import Group
 from app.models.user_group import UserGroup
 from app.models.saml_config import SAMLConfig
 from app.models.secret import Secret
+from app.services.maintenance import set_maintenance_mode, is_maintenance_mode
 from app.schemas.auth import (
     UserResponse,
     UserUpdate,

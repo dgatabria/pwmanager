@@ -5,21 +5,24 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.main import app, is_maintenance_mode
 from app.models.user import User
+from app.services.maintenance import is_maintenance_mode
 from app.schemas.auth import LoginRequest, Token, UserCreate, UserResponse
 from app.services.auth import AuthService
 from app.utils.security import SecurityUtils
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
-# Rate limiter for auth endpoints — share the singleton from main.py
-limiter = app.state.limiter
+# Rate limiter for auth endpoints — independent from main.py limiter
+# to avoid circular imports.
+_auth_limiter = Limiter(key_func=get_remote_address)
 
 # JWT cookie name
 JWT_COOKIE_NAME = "access_token"
@@ -131,7 +134,7 @@ UserDepInfo = Annotated[dict, Depends(get_current_user_info)]
 
 
 @router.post("/login")
-@limiter.limit(settings.RATE_LIMIT)
+@_auth_limiter.limit(settings.RATE_LIMIT)
 async def login(request: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT token.
 
@@ -241,7 +244,7 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
 
 
 @router.post("/change-password")
-@limiter.limit(settings.RATE_LIMIT)
+@_auth_limiter.limit(settings.RATE_LIMIT)
 async def change_password(
     request: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
@@ -273,7 +276,7 @@ async def change_password(
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/hour")
+@_auth_limiter.limit("10/hour")
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """Register a new user.
     

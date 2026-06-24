@@ -14,6 +14,7 @@ from app.routers.auth import router as auth_router
 from app.routers.groups import router as groups_router
 from app.routers.secret_groups import router as secret_groups_router
 from app.routers.secrets import router as secrets_router
+from app.services.maintenance import set_maintenance_mode, is_maintenance_mode
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -81,43 +82,6 @@ def _set_csrf_cookie(response: Response) -> None:
             max_age=3600,  # 1 hour
             path="/",
         )
-
-# ─── Maintenance Mode ───────────────────────────────────────────────
-# Persistent flag stored in the database so it survives restarts and works
-# correctly across multiple worker processes.
-# Used during encryption key rotation to prevent data corruption.
-
-
-async def set_maintenance_mode(active: bool) -> None:
-    """Enable or disable maintenance mode (database-backed)."""
-    from app.database import async_session
-    from app.models.app_settings import AppSettings
-
-    async with async_session() as session:
-        result = await session.execute(
-            AppSettings.__table__.select().limit(1)
-        )
-        row = result.scalar_one_or_none()
-        if row is None:
-            row = AppSettings(maintenance_mode=active)
-            session.add(row)
-        else:
-            row.maintenance_mode = active
-        await session.commit()
-
-
-async def is_maintenance_mode() -> bool:
-    """Check if the application is in maintenance mode (database-backed)."""
-    from app.database import async_session
-    from app.models.app_settings import AppSettings
-
-    async with async_session() as session:
-        result = await session.execute(
-            AppSettings.__table__.select().limit(1)
-        )
-        row = result.scalar_one_or_none()
-        return row.maintenance_mode if row else False
-
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
