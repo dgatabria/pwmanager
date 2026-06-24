@@ -1,25 +1,28 @@
-"""add password_change_required column
+"""Add password_change_required column to users table.
 
-Revision ID: 006
-Revises: 005
-Create Date: 2026-06-24
+This migration adds the password_change_required boolean column which
+forces first-time users (created by the seed script) to change their
+password on initial login.
 """
 
-from alembic import op
-import sqlalchemy as sa
-
-revision = "006"
-down_revision = "005"
-branch_labels = None
-depends_on = None
+from sqlalchemy import text
 
 
-def upgrade():
-    op.add_column(
-        "users",
-        sa.Column("password_change_required", sa.Boolean(), nullable=False, server_default="true"),
-    )
+async def migrate(db):
+    """Add password_change_required column to users."""
+    result = await db.execute(text(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = 'users' AND column_name = 'password_change_required'"
+    ))
+    if result.fetchone():
+        print("  Migration already applied. Skipping.")
+        return
 
+    print("  Adding password_change_required column to users...")
+    await db.execute(text("""
+        ALTER TABLE users
+        ADD COLUMN password_change_required BOOLEAN NOT NULL DEFAULT TRUE
+    """))
 
-def downgrade():
-    op.drop_column("users", "password_change_required")
+    await db.commit()
+    print("  Migration complete: password_change_required column added.")

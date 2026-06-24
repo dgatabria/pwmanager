@@ -16,7 +16,7 @@ from app.schemas.auth import LoginRequest, Token, UserCreate, UserResponse
 from app.services.auth import AuthService
 from app.utils.security import SecurityUtils
 
-router = APIRouter(tags=["Authentication"])
+router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 # Rate limiter for auth endpoints — share the singleton from main.py
 limiter = app.state.limiter

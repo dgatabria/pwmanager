@@ -48,6 +48,12 @@ async def csrf_protect(request: Request, call_next):
             _set_csrf_cookie(response)
         return response
 
+    # Authentication endpoints do not require CSRF — they are the entry
+    # point that establishes the session / cookie in the first place.
+    auth_paths = ("/login", "/register", "/change-password", "/api/auth/login", "/api/auth/register", "/api/auth/change-password")
+    if request.url.path in auth_paths:
+        return await call_next(request)
+
     # For unsafe methods, require the CSRF token header.
     token = request.headers.get("x-csrf-token")
     cookie_token = request.cookies.get(CSRF_TOKEN_COOKIE)
