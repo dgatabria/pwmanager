@@ -67,15 +67,28 @@ class APITokenService:
         """
         Validate an API token using bcrypt.checkpw.
 
+        The token is hashed first, then looked up by its hash. This ensures
+        a single indexed lookup instead of scanning every active token in the
+        database.
+
         Returns (api_token, user_info) if valid, (None, None) if invalid.
         """
+        token_hash = APITokenService.hash_token(token)
+
         result = await db.execute(
             select(APIToken)
             .where(APIToken.is_active == True)
+            .where(APIToken.token_hash == token_hash)
         )
         api_token = result.scalar_one_or_none()
 
         if not api_token:
+            return None, None
+
+        # Check expiration (before verifying, to avoid timing leaks on expired tokens)
+        if api_token.expires_at and datetime.now(timezone.utc) > api_token.expires_at:
+            api_token.is_active = False
+            await db.commit()
             return None, None
 
         # Verify token against bcrypt hash (constant-time comparison)
@@ -83,12 +96,6 @@ class APITokenService:
             token.encode("utf-8"),
             api_token.token_hash.encode("utf-8"),
         ):
-            return None, None
-
-        # Check expiration
-        if api_token.expires_at and datetime.now(timezone.utc) > api_token.expires_at:
-            api_token.is_active = False
-            await db.commit()
             return None, None
 
         # Update last used

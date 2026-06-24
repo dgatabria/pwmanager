@@ -4,14 +4,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.main import is_maintenance_mode
+from app.main import app, is_maintenance_mode
 from app.models.user import User
 from app.schemas.auth import LoginRequest, Token, UserCreate, UserResponse
 from app.services.auth import AuthService
@@ -19,8 +17,8 @@ from app.utils.security import SecurityUtils
 
 router = APIRouter(tags=["Authentication"])
 
-# Rate limiter for auth endpoints - shared with main.py
-limiter: Limiter = getattr(settings, "_limiter", Limiter(key_func=get_remote_address))
+# Rate limiter for auth endpoints — share the singleton from main.py
+limiter = app.state.limiter
 
 # JWT cookie name
 JWT_COOKIE_NAME = "access_token"
@@ -137,8 +135,8 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
             detail=f"Account is locked. Try again in {remaining} minute(s).",
         )
 
-    # If account was previously locked but lock has expired, reset attempts
-    if user.failed_login_attempts > 0:
+    # Reset failed login attempts and lock status on successful login
+    if user.failed_login_attempts > 0 or user.locked_until is not None:
         user.failed_login_attempts = 0
         user.locked_until = None
         await db.commit()

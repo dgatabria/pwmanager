@@ -55,14 +55,19 @@ async def get_current_user_with_api_key(
             from app.services.auth import AuthService
             payload = AuthService.decode_token(token)
             user_id = payload.get("sub")
-            if user_id:
-                user_info = {
-                    "id": int(user_id),
-                    "username": payload.get("username", ""),
-                    "email": payload.get("email", ""),
-                    "full_name": payload.get("full_name", ""),
-                    "is_superuser": payload.get("is_superuser", False),
-                }
+            if not user_id:
+                # JWT decoded but missing "sub" claim — reject, do NOT
+                # fall through to API-key auth.
+                raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
+            user_info = {
+                "id": int(user_id),
+                "username": payload.get("username", ""),
+                "email": payload.get("email", ""),
+                "full_name": payload.get("full_name", ""),
+                "is_superuser": payload.get("is_superuser", False),
+            }
+        except HTTPException:
+            raise
         except Exception as exc:
             # JWT validation failed — reject. Do NOT fall through to API key
             # auth, because that would allow an attacker to supply an invalid

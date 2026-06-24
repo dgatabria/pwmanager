@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -46,7 +46,7 @@ async def check_secret_access(
     permission: str = "read",
 ):
     """Check if user has access to a secret via their groups.
-    
+
     Args:
         secret_id: The secret ID to check
         user_id: The user ID
@@ -102,6 +102,50 @@ async def check_secret_access(
     raise HTTPException(status_code=403, detail="Access denied")
 
 
+async def check_secret_group_access(
+    secret_group_id: int,
+    user_id: int,
+    db: AsyncSession,
+    permission: str = "read",
+):
+    """Check if user has write access to a secret group.
+
+    A user has access if they are the group owner or if one of their
+    user groups has been granted access via SecretGroupMember.
+
+    Raises HTTPException(403) if access is denied.
+    """
+    result = await db.execute(
+        select(SecretGroup)
+        .where(SecretGroup.id == secret_group_id, SecretGroup.is_active == True)
+    )
+    sg = result.scalar_one_or_none()
+
+    if not sg:
+        raise HTTPException(status_code=404, detail="Secret group not found")
+
+    # Owner always has full access
+    if sg.owner_id == user_id:
+        return sg
+
+    # Check access via group memberships
+    result = await db.execute(
+        select(SecretGroupMember)
+        .where(
+            SecretGroupMember.secret_group_id == secret_group_id,
+            SecretGroupMember.permission == permission,
+        )
+        .join(UserGroup, UserGroup.group_id == SecretGroupMember.group_id)
+        .where(UserGroup.user_id == user_id)
+    )
+    access = result.scalars().first()
+
+    if access is None:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return sg
+
+
 @router.get("")
 @_secret_limiter.limit("60/minute")
 async def list_secrets(
@@ -113,6 +157,9 @@ async def list_secrets(
 ):
     """List secrets accessible to the current user.
 
+    Only returns secrets that the user owns or has read access to via
+    group memberships.
+
     Note: The username field is intentionally excluded from this endpoint
     to prevent information leakage. Username is only revealed when a user
     explicitly views a specific secret.
@@ -120,6 +167,37 @@ async def list_secrets(
     Rate limited to 60 requests per minute to prevent enumeration attacks.
     """
     user_id = user_info["id"]
+
+    # Build a query that returns only secrets the user can access:
+    # 1. Secrets owned by the user
+    # 2. Secrets in secret groups where a user group of this user has "read" access
+    accessible_secret_ids = (
+        select(Secret.id)
+        .where(
+            Secret.is_active == True,
+            or_(
+                Secret.owner_id == user_id,
+                Secret.id.in_(
+                    select(Secret.id).where(
+                        Secret.is_active == True,
+                        Secret.id.in_(
+                            select(SecretGroupMember.secret_group_id).where(
+                                SecretGroupMember.permission == "read"
+                            ).join(
+                                SecretGroup,
+                                SecretGroupMember.secret_group_id == SecretGroup.id,
+                            ).join(
+                                UserGroup,
+                                UserGroup.group_id == SecretGroupMember.group_id,
+                            ).where(
+                                UserGroup.user_id == user_id,
+                            )
+                        ),
+                    )
+                ),
+            ),
+        )
+    )
 
     query = (
         select(
@@ -134,6 +212,7 @@ async def list_secrets(
             Secret.owner_id,
         )
         .where(Secret.is_active == True)
+        .where(Secret.id.in_(accessible_secret_ids))
         .order_by(Secret.updated_at.desc())
     )
 
@@ -218,16 +297,8 @@ async def create_secret(
     """
     user_id = user_info["id"]
 
-    # Verify group exists
-    result = await db.execute(
-        select(SecretGroup).where(SecretGroup.id == secret_data.group_id)
-    )
-    group = result.scalar_one_or_none()
-    if not group:
-        raise HTTPException(status_code=404, detail="Secret group not found")
-
-    # Check write access to the group
-    await check_secret_access(secret_data.group_id, user_id, db, permission="write")
+    # Verify user has write access to the target secret group
+    await check_secret_group_access(secret_data.group_id, user_id, db, permission="write")
 
     secret = Secret(
         title=secret_data.title,

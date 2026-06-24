@@ -754,7 +754,12 @@ async def admin_rotate_encryption_key(
 ):
     """Rotate the encryption key used to encrypt all secrets.
 
-    This operation:
+    This operation is atomic: if ANY secret fails to re-encrypt, the entire
+    rotation is rolled back and no secrets are modified. This prevents a
+    mixed state where some secrets are encrypted with the old key and others
+    with the new key.
+
+    Steps:
     1. Puts the app in maintenance mode (blocks non-admin login)
     2. Generates a new encryption key
     3. Decrypts all secrets with the old key
@@ -783,8 +788,8 @@ async def admin_rotate_encryption_key(
             }
 
         total = len(all_secrets)
-        processed = 0
         failed = 0
+        errors: list[str] = []
 
         for secret in all_secrets:
             try:
@@ -796,12 +801,25 @@ async def admin_rotate_encryption_key(
 
                 # Update in database
                 secret.encrypted_data = new_encrypted
-                processed += 1
             except Exception as e:
                 failed += 1
-                # Log but continue processing other secrets
                 import logging
-                logging.error(f"Failed to re-encrypt secret {secret.id}: {e}")
+                msg = f"Failed to re-encrypt secret {secret.id}: {e}"
+                logging.error(msg)
+                errors.append(msg)
+
+        # If ANY secret failed, roll back the entire operation
+        if failed > 0:
+            await db.rollback()
+            await set_maintenance_mode(False)
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Key rotation failed: {failed}/{total} secrets could not be "
+                    f"re-encrypted. The database has been rolled back. "
+                    f"Errors: {'; '.join(errors[:5])}"
+                ),
+            )
 
         await db.commit()
 
@@ -810,13 +828,16 @@ async def admin_rotate_encryption_key(
 
         return {
             "message": "Key rotation completed successfully",
-            "secrets_processed": processed,
-            "secrets_failed": failed,
+            "secrets_processed": total,
+            "secrets_failed": 0,
             "total_secrets": total,
             "status": "completed",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
+    except HTTPException:
+        # Re-raise HTTPException (already handled)
+        raise
     except Exception as e:
         # Ensure maintenance mode is exited even on error
         await set_maintenance_mode(False)
