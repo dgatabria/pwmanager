@@ -26,11 +26,13 @@ class SecretUpdate(BaseModel):
 
 
 class SecretResponse(BaseModel):
+    """Response for create/update — encrypted_data is intentionally excluded
+    so the server never echoes back ciphertext in response bodies."""
+
     id: int
     title: str
     description: str | None
     secret_type: SecretType
-    encrypted_data: str
     key_length: int | None
     username: str | None
     url: str | None
