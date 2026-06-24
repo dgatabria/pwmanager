@@ -293,6 +293,9 @@ async def create_secret(
 ):
     """Create a new secret.
 
+    The plaintext_data is encrypted server-side before being stored in the
+    database. This ensures secrets are never stored in plaintext.
+
     Rate limited to 30 requests per minute to prevent abuse.
     """
     user_id = user_info["id"]
@@ -300,11 +303,14 @@ async def create_secret(
     # Verify user has write access to the target secret group
     await check_secret_group_access(secret_data.group_id, user_id, db, permission="write")
 
+    # Encrypt plaintext_data server-side before persisting
+    encrypted = EncryptionService.encrypt(secret_data.plaintext_data)
+
     secret = Secret(
         title=secret_data.title,
         description=secret_data.description,
         secret_type=secret_data.secret_type,
-        encrypted_data=secret_data.encrypted_data,
+        encrypted_data=encrypted,
         key_length=secret_data.key_length,
         username=secret_data.username,
         url=secret_data.url,
@@ -320,7 +326,6 @@ async def create_secret(
         title=secret.title,
         description=secret.description,
         secret_type=secret.secret_type,
-        encrypted_data=secret.encrypted_data,
         key_length=secret.key_length,
         username=secret.username,
         url=secret.url,
@@ -342,6 +347,8 @@ async def update_secret(
 ):
     """Update a secret.
 
+    Any provided plaintext_data is encrypted server-side before being stored.
+
     Rate limited to 30 requests per minute to prevent abuse.
     """
     user_id = user_info["id"]
@@ -351,8 +358,8 @@ async def update_secret(
         secret.title = secret_data.title
     if secret_data.description is not None:
         secret.description = secret_data.description
-    if secret_data.encrypted_data is not None:
-        secret.encrypted_data = secret_data.encrypted_data
+    if secret_data.plaintext_data is not None:
+        secret.encrypted_data = EncryptionService.encrypt(secret_data.plaintext_data)
     if secret_data.key_length is not None:
         secret.key_length = secret_data.key_length
     if secret_data.username is not None:
@@ -368,7 +375,6 @@ async def update_secret(
         title=secret.title,
         description=secret.description,
         secret_type=secret.secret_type,
-        encrypted_data=secret.encrypted_data,
         key_length=secret.key_length,
         username=secret.username,
         url=secret.url,

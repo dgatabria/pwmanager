@@ -9,7 +9,7 @@ class SecretCreate(BaseModel):
     title: str
     description: str | None = None
     secret_type: SecretType
-    encrypted_data: str
+    plaintext_data: str
     key_length: int | None = None
     username: str | None = None
     url: str | None = None
@@ -19,7 +19,7 @@ class SecretCreate(BaseModel):
 class SecretUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
-    encrypted_data: str | None = None
+    plaintext_data: str | None = None
     key_length: int | None = None
     username: str | None = None
     url: str | None = None
