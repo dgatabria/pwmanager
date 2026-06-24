@@ -797,8 +797,14 @@ async def admin_update_auth_method(
 async def admin_get_saml_config(
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
+    show_secrets: bool = Query(False, description="If true, returns sensitive fields (certificate, URLs) unmasked"),
 ):
-    """Get the SAML configuration from database (superuser only)."""
+    """Get the SAML configuration from database (superuser only).
+
+    By default, sensitive fields (certificate, entity_id, sso_url, acs_url,
+    slo_url, slo_redirect_url) are masked. Set `?show_secrets=true` to
+    retrieve the full configuration for editing.
+    """
     await require_superuser(current_user_id, db)
     
     result = await db.execute(select(SAMLConfig))
@@ -807,6 +813,22 @@ async def admin_get_saml_config(
     if config is None:
         # Return empty config if not yet created
         return SAMLConfigResponse(saml_enabled=False, auth_method="local")
+    
+    # Mask sensitive fields unless explicitly requested
+    if not show_secrets:
+        return SAMLConfigResponse(
+            saml_enabled=config.saml_enabled,
+            auth_method=config.auth_method,
+            entity_id="**** MASKED ****",
+            sso_url="**** MASKED ****",
+            idp_metadata_url=config.idp_metadata_url,
+            acs_url="**** MASKED ****",
+            certificate="**** MASKED ****",
+            entity_id_label=config.entity_id_label,
+            slo_url="**** MASKED ****",
+            slo_redirect_url="**** MASKED ****",
+            certificate_label=config.certificate_label,
+        )
     
     return SAMLConfigResponse(
         saml_enabled=config.saml_enabled,

@@ -27,7 +27,8 @@ class SecretUpdate(BaseModel):
 
 class SecretResponse(BaseModel):
     """Response for create/update — encrypted_data is intentionally excluded
-    so the server never echoes back ciphertext in response bodies."""
+    so the server never echoes back ciphertext in response bodies.
+    owner_id is intentionally excluded to prevent user enumeration."""
 
     id: int
     title: str
@@ -37,7 +38,6 @@ class SecretResponse(BaseModel):
     username: str | None
     url: str | None
     group_id: int
-    owner_id: int
     is_active: bool
     created_at: str
     updated_at: str
@@ -129,7 +129,9 @@ class SSHKeyGenerateRequest(BaseModel):
 
 
 class SSHKeyGenerateResponse(BaseModel):
+    """SSH key pair response. The private_key is encrypted server-side
+    so it is never transmitted or stored in plaintext."""
     public_key: str
-    private_key: str
+    private_key_encrypted: str
     fingerprint: str
     key_length: int

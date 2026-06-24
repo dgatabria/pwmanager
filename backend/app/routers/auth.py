@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -38,9 +38,10 @@ async def get_current_user(
     Checks the Authorization header first (Bearer token), then falls back
     to the httpOnly cookie.
 
-    Validates the token_version claim (tv) against the database to prevent
-    session fixation — if the user logged in again, all old tokens are
-    automatically invalidated.
+    Validates:
+    - token_version claim (tv) against the database to prevent session fixation
+    - JTI claim against the revoked_tokens table to prevent replay of
+      explicitly revoked tokens (e.g., on logout)
 
     Returns user_id (int).
     Centralized auth function - used by all routers.
@@ -72,6 +73,20 @@ async def get_current_user(
             )
             user = result.scalar_one_or_none()
             if not user or user.token_version != token_version:
+                raise HTTPException(
+                    status_code=401, detail="Token has been revoked"
+                )
+
+        # Check JTI against revoked_tokens to prevent replay of revoked tokens
+        jti = payload.get("jti")
+        if jti:
+            result = await db.execute(
+                text(
+                    "SELECT 1 FROM revoked_tokens WHERE jti = :jti "
+                    "AND expires_at > NOW()"
+                ).bindparams(jti=jti)
+            )
+            if result.scalar_one_or_none():
                 raise HTTPException(
                     status_code=401, detail="Token has been revoked"
                 )
@@ -181,9 +196,32 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
     user.token_version += 1
     await db.commit()
 
-    token = AuthService.create_access_token(
-        data={"sub": str(user.id), "tv": user.token_version}
+    token, jti = AuthService.create_access_token(
+        data={
+            "sub": str(user.id),
+            "tv": user.token_version,
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "is_superuser": user.is_superuser,
+        }
     )
+
+    # Store JTI for server-side token revocation on logout
+    await db.execute(
+        text(
+            "INSERT INTO revoked_tokens (jti, user_id, reason, expires_at) "
+            "VALUES (:jti, :user_id, :reason, :expires_at) "
+            "ON CONFLICT (jti) DO NOTHING"
+        ).bindparams(
+            jti=jti,
+            user_id=str(user.id),
+            reason="login",
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        )
+    )
+    await db.commit()
 
     # Set httpOnly cookie as an additional auth mechanism
     response.set_cookie(
@@ -268,8 +306,41 @@ async def get_me(
 
 
 @router.post("/logout")
-async def logout(response: Response):
-    """Logout by clearing the httpOnly JWT cookie."""
+async def logout(
+    response: Response,
+    request: Request = Depends(),
+    db: AsyncSession = Depends(get_db),
+):
+    """Logout by clearing the httpOnly JWT cookie AND revoking the token.
+
+    The JWT JTI (JWT ID) is extracted from the cookie and inserted into the
+    revoked_tokens table so that the token is rejected server-side even
+    before it expires. This prevents replay attacks on stolen tokens.
+    """
+    token = request.cookies.get(JWT_COOKIE_NAME)
+    if token:
+        try:
+            payload = AuthService.decode_token(token)
+            jti = payload.get("jti")
+            if jti:
+                await db.execute(
+                    text(
+                        "INSERT INTO revoked_tokens (jti, user_id, reason, expires_at) "
+                        "VALUES (:jti, :user_id, :reason, :expires_at) "
+                        "ON CONFLICT (jti) DO NOTHING"
+                    ).bindparams(
+                        jti=jti,
+                        user_id=str(payload.get("sub", "")),
+                        reason="logout",
+                        expires_at=datetime.now(timezone.utc)
+                        + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+                    )
+                )
+                await db.commit()
+        except Exception:
+            # Token may be expired or invalid — still clear the cookie
+            pass
+
     response.delete_cookie(
         key=JWT_COOKIE_NAME,
         path="/",

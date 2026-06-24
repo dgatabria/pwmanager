@@ -503,6 +503,10 @@ async def generate_ssh_key(
         request_body.key_length, request_body.comment
     )
 
+    # Encrypt the private key before returning it to prevent exposure
+    # in logs, browser history, or network sniffing
+    encrypted_private_key = EncryptionService.encrypt(private_key)
+
     # Audit: SSH key generation
     await AuditService.log_crud(
         db,
@@ -515,7 +519,7 @@ async def generate_ssh_key(
 
     return SSHKeyGenerateResponse(
         public_key=public_key,
-        private_key=private_key,
+        private_key_encrypted=encrypted_private_key,
         fingerprint=fingerprint,
         key_length=request_body.key_length,
     )

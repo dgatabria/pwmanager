@@ -47,7 +47,7 @@ export default function AdminAuthMethod() {
     try {
       const [authData, samlData] = await Promise.all([
         api.get<AuthMethodConfig>('/api/admin/auth/method'),
-        api.get<SAMLConfig>('/api/admin/auth/saml'),
+        api.get<SAMLConfig>('/api/admin/auth/saml?show_secrets=true'),
       ])
       setAuthMethod(authData.auth_method as 'local' | 'saml')
       setSamlConfig(samlData)
