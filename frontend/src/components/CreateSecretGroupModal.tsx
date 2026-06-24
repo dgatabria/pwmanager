@@ -4,12 +4,11 @@ import type { Group, SecretGroup } from '../types'
 
 interface Props {
   userGroups: Group[]
-  existingGroups: SecretGroup[]
   onClose: () => void
   onSuccess: () => void
 }
 
-export default function CreateSecretGroupModal({ userGroups, existingGroups, onClose, onSuccess }: Props) {
+export default function CreateSecretGroupModal({ userGroups, onClose, onSuccess }: Props) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
@@ -17,9 +16,6 @@ export default function CreateSecretGroupModal({ userGroups, existingGroups, onC
   const [selectedGroups, setSelectedGroups] = useState<number[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
-  // Parent groups for nesting
-  const parentGroups = existingGroups.filter(g => g.parent_id === null && g.is_active)
 
   useEffect(() => {
     // Auto-select first available group if none selected

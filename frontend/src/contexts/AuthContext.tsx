@@ -19,17 +19,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-/**
- * Extract the JWT token from httpOnly cookies.
- * Returns null if no token cookie is found.
- * Note: httpOnly cookies are not accessible via document.cookie in the browser,
- * so this is a fallback for non-httpOnly tokens (e.g., during development).
- */
-function getCookieToken(): string | null {
-  const match = document.cookie.match(/access_token=([^;]+)/)
-  return match ? match[1] : null
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)

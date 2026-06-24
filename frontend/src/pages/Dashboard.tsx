@@ -293,7 +293,6 @@ export default function Dashboard() {
       {showCreateGroupModal && (
         <CreateSecretGroupModal
           userGroups={groups}
-          existingGroups={secretGroups}
           onClose={() => setShowCreateGroupModal(false)}
           onSuccess={handleCreateGroup}
         />

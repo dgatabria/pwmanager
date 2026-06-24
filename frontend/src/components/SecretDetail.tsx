@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import api from '../services/api'
 import { sanitizeUrl } from '../utils/url'
 import type { Secret, SecretMasked, SecretReveal, SecretCopy } from '../types'

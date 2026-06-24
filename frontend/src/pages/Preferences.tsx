@@ -4,7 +4,7 @@ import api from '../services/api'
 import type { APIToken, APITokenCreateResponse, APITokenRecycleResponse } from '../types'
 
 export default function Preferences() {
-  const { user, token } = useAuth()
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<'tokens' | 'profile'>('tokens')
   const [apiTokens, setApiTokens] = useState<APIToken[]>([])
   const [loading, setLoading] = useState(true)

@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
-import api from '../services/api'
 import UserManagement from '../components/AdminUserManagement'
 import BackupRecovery from '../components/AdminBackupRecovery'
 import AdminAuthMethod from '../components/AdminAuthMethod'

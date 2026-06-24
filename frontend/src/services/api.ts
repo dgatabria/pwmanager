@@ -15,14 +15,13 @@ async function ensureCsrfToken(): Promise<string> {
     })
     if (res.ok) {
       const data = await res.json()
-      csrfToken = data.csrf_token
-      return csrfToken
+      csrfToken = data.csrf_token ?? ''
     }
   } catch {
     // If we can't fetch a token, proceed without CSRF protection
     // (e.g., during initial page load before the backend is ready)
   }
-  return ''
+  return csrfToken ?? ''
 }
 
 const api = {
@@ -35,7 +34,7 @@ const api = {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(options.headers as Record<string, string> | undefined),
     }
 
     // Attach CSRF token header for unsafe methods

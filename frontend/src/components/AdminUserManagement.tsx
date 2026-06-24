@@ -65,7 +65,7 @@ export default function AdminUserManagement() {
 
   const handleToggleActive = async (userId: number) => {
     try {
-      await api.post(`/api/admin/users/${userId}/toggle-active`)
+      await api.post(`/api/admin/users/${userId}/toggle-active`, {})
       await fetchData()
     } catch (err: any) {
       setError(err.message || 'Failed to update user')
@@ -122,7 +122,7 @@ export default function AdminUserManagement() {
 
   const handleAddToGroup = async (userId: number, groupId: number) => {
     try {
-      await api.post(`/api/admin/users/${userId}/groups/${groupId}`)
+      await api.post(`/api/admin/users/${userId}/groups/${groupId}`, {})
       setShowGroupModal(null)
       await fetchData()
     } catch (err: any) {

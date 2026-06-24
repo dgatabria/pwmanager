@@ -6,9 +6,8 @@ interface Props {
   onRefresh: () => void
 }
 
-export default function UserManagement({ groups, onRefresh }: Props) {
+export default function UserManagement({ groups }: Props) {
   const [activeSection, setActiveSection] = useState<'groups' | 'users'>('groups')
-  const [newGroupName, setNewGroupName] = useState('')
 
   return (
     <div className="space-y-6">
