@@ -134,6 +134,36 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
+# HTTPS enforcement — redirect HTTP → HTTPS in production.
+# Skipped when HTTPS_ENFORCE is False (e.g., behind a reverse proxy
+# that terminates TLS).  Also respects the X-Forwarded-Proto header
+# so the middleware works correctly when the app is behind a proxy.
+async def enforce_https(request: Request, call_next):
+    """Redirect HTTP requests to HTTPS when configured."""
+    if not settings.HTTPS_ENFORCE:
+        return await call_next(request)
+
+    # Only redirect non-health, non-API-root requests to avoid breaking
+    # internal health checks that may not preserve the scheme.
+    if request.url.path in ("/", "/health", "/api/health"):
+        return await call_next(request)
+
+    # Check the actual protocol — respect X-Forwarded-Proto for proxy setups.
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    if scheme != "https":
+        # Build the HTTPS URL preserving host, port, path and query.
+        url = request.url.copy_with(scheme="https")
+        return JSONResponse(
+            status_code=307,
+            content={"detail": "Redirecting to HTTPS"},
+            headers={"Location": str(url)},
+        )
+
+    return await call_next(request)
+
+
+app.middleware("http")(enforce_https)
+
 # CSRF middleware — must run before CORS so the cookie is set correctly.
 app.middleware("http")(csrf_protect)
 

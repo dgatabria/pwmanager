@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     # Disabled by default in production to avoid leaking API surface
     DOCS_ENABLED: bool = False
 
+    # Enforce HTTPS in production. When True, all HTTP requests are
+    # redirected to HTTPS. Set to False for local development behind
+    # a reverse proxy that terminates TLS.
+    HTTPS_ENFORCE: bool = True
+
     class Config:
         env_file = ".env"
 

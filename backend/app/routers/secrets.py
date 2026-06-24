@@ -209,7 +209,6 @@ async def list_secrets(
             Secret.updated_at,
             Secret.key_length,
             Secret.url,
-            Secret.owner_id,
         )
         .where(Secret.is_active == True)
         .where(Secret.id.in_(accessible_secret_ids))
@@ -238,7 +237,6 @@ async def list_secrets(
             "updated_at": str(s.updated_at),
             "key_length": s.key_length,
             "url": s.url,
-            "owner_id": s.owner_id,
         }
         for s in secrets
     ]
@@ -628,7 +626,7 @@ async def reveal_secret(
         audit_id=secret.id,
         audit_event="secret_reveal",
         audit_timestamp=str(datetime.now(timezone.utc)),
-        audit_ip=Request.__new__(Request).client.host if request and request.client else "unknown",
+        audit_ip=AuditService._extract_client_ip(request) if request else "unknown",
     )
 
 
@@ -670,5 +668,5 @@ async def copy_secret(
         audit_id=secret.id,
         audit_event="secret_copy",
         audit_timestamp=str(datetime.now(timezone.utc)),
-        audit_ip=Request.__new__(Request).client.host if request and request.client else "unknown",
+        audit_ip=AuditService._extract_client_ip(request) if request else "unknown",
     )

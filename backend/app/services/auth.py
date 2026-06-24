@@ -43,3 +43,5 @@ class AuthService:
             return payload
         except JWTError as e:
             raise ValueError(f"Invalid token: {e}")
+        except Exception as e:
+            raise ValueError(f"Token validation failed: {e}")

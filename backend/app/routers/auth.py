@@ -31,11 +31,16 @@ CSRF_TOKEN_COOKIE = "csrf_token"
 async def get_current_user(
     request: Request = Depends(),
     authorization: Annotated[str | None, Header()] = None,
+    db: AsyncSession = Depends(get_db),
 ):
     """Dependency to get current user from JWT token.
 
     Checks the Authorization header first (Bearer token), then falls back
     to the httpOnly cookie.
+
+    Validates the token_version claim (tv) against the database to prevent
+    session fixation — if the user logged in again, all old tokens are
+    automatically invalidated.
 
     Returns user_id (int).
     Centralized auth function - used by all routers.
@@ -58,6 +63,19 @@ async def get_current_user(
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Validate token_version to prevent session fixation
+        token_version = payload.get("tv")
+        if token_version is not None:
+            result = await db.execute(
+                select(User).where(User.id == int(user_id))
+            )
+            user = result.scalar_one_or_none()
+            if not user or user.token_version != token_version:
+                raise HTTPException(
+                    status_code=401, detail="Token has been revoked"
+                )
+
         return int(user_id)
     except (ValueError, Exception):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -158,7 +176,14 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
             detail="Service is temporarily unavailable. Maintenance in progress.",
         )
 
-    token = AuthService.create_access_token(data={"sub": str(user.id)})
+    # Increment token_version to invalidate all previously issued JWT tokens
+    # for this user (session fixation prevention).
+    user.token_version += 1
+    await db.commit()
+
+    token = AuthService.create_access_token(
+        data={"sub": str(user.id), "tv": user.token_version}
+    )
 
     # Set httpOnly cookie as an additional auth mechanism
     response.set_cookie(
