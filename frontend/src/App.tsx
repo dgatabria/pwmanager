@@ -21,6 +21,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" />
 }
 
+function RequirePasswordChange({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading, passwordChangeRequired } = useAuth()
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-500">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />
+  }
+  if (passwordChangeRequired) {
+    return <Navigate to="/change-password" replace />
+  }
+  return <>{children}</>
+}
+
 function HomeRoute() {
   const { isSuperuser, isLoading } = useAuth()
   if (isLoading) {
@@ -44,17 +65,17 @@ function AppRoutes() {
       <Route
         path="/"
         element={
-          <ProtectedRoute>
+          <RequirePasswordChange>
             <HomeRoute />
-          </ProtectedRoute>
+          </RequirePasswordChange>
         }
       />
       <Route
         path="/preferences"
         element={
-          <ProtectedRoute>
+          <RequirePasswordChange>
             <Preferences />
-          </ProtectedRoute>
+          </RequirePasswordChange>
         }
       />
       <Route path="*" element={<Navigate to="/" />} />
