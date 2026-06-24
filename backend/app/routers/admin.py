@@ -2,7 +2,7 @@
 
 from typing import Annotated
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import func, select
@@ -28,6 +28,7 @@ from app.schemas.auth import (
 )
 from app.schemas.group import GroupCreate, GroupResponse, GroupUpdate
 from app.services.encryption import EncryptionService
+from app.services.audit import AuditService
 from app.utils.security import SecurityUtils
 from app.routers.auth import get_current_user
 
@@ -100,6 +101,7 @@ async def admin_list_users(
 async def admin_create_user(
     user_data: AdminUserCreate,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new user (superuser only)."""
@@ -133,6 +135,17 @@ async def admin_create_user(
     await db.commit()
     await db.refresh(user)
     
+    # Audit: user creation
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_USER,
+        AuditService.OP_CREATE,
+        current_user_id,
+        entity_id=user.id,
+        request=request,
+        details=f"Created user '{user_data.username}' (email={user_data.email}, superuser={user_data.is_superuser})",
+    )
+    
     return UserResponse(
         id=user.id,
         username=user.username,
@@ -149,6 +162,7 @@ async def admin_update_user(
     user_id: int,
     user_data: UserUpdate,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Update a user (superuser only)."""
@@ -167,6 +181,7 @@ async def admin_update_user(
             detail="Cannot modify your own superuser status",
         )
     
+    changes: list[str] = []
     if user_data.email is not None:
         # Check if email is already used by another user
         existing = await db.execute(
@@ -174,16 +189,30 @@ async def admin_update_user(
         )
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Email already exists")
+        changes.append(f"email={user_data.email}")
         user.email = user_data.email
     
     if user_data.full_name is not None:
+        changes.append(f"full_name={user_data.full_name}")
         user.full_name = user_data.full_name
     
     if user_data.is_active is not None:
+        changes.append(f"is_active={user_data.is_active}")
         user.is_active = user_data.is_active
     
     await db.commit()
     await db.refresh(user)
+    
+    # Audit: user update
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_USER,
+        AuditService.OP_UPDATE,
+        current_user_id,
+        entity_id=user.id,
+        request=request,
+        details=f"Updated user '{user.username}': {', '.join(changes)}",
+    )
     
     return UserResponse(
         id=user.id,
@@ -200,8 +229,9 @@ async def admin_update_user(
 @_admin_limiter.limit("60/minute")
 async def admin_reset_password(
     user_id: int,
-    request: ResetPasswordRequest,
+    password_request: ResetPasswordRequest,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Reset a user's password (superuser only).
@@ -213,7 +243,7 @@ async def admin_reset_password(
     await require_superuser(current_user_id, db)
     
     # Validate password strength
-    is_valid, error_msg = SecurityUtils.validate_password_strength(request.new_password)
+    is_valid, error_msg = SecurityUtils.validate_password_strength(password_request.new_password)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_msg)
     
@@ -223,9 +253,20 @@ async def admin_reset_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    hashed = SecurityUtils.hash_password(request.new_password)
+    hashed = SecurityUtils.hash_password(password_request.new_password)
     user.hashed_password = hashed
     await db.commit()
+    
+    # Audit: password reset
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_USER,
+        AuditService.OP_RESET_PASSWORD,
+        current_user_id,
+        entity_id=user.id,
+        request=request,
+        details=f"Reset password for user '{user.username}'",
+    )
     
     return {
         "message": "Password reset successfully",
@@ -238,6 +279,7 @@ async def admin_reset_password(
 async def admin_toggle_active(
     user_id: int,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Toggle user active/inactive status (superuser only)."""
@@ -256,9 +298,21 @@ async def admin_toggle_active(
             detail="Cannot deactivate your own account",
         )
     
-    user.is_active = not user.is_active
+    new_status = not user.is_active
+    user.is_active = new_status
     await db.commit()
     await db.refresh(user)
+    
+    # Audit: toggle active
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_USER,
+        AuditService.OP_TOGGLE,
+        current_user_id,
+        entity_id=user.id,
+        request=request,
+        details=f"Toggled user '{user.username}' to {'active' if new_status else 'inactive'}",
+    )
     
     return UserResponse(
         id=user.id,
@@ -275,6 +329,7 @@ async def admin_toggle_active(
 async def admin_delete_user(
     user_id: int,
     current_user_id: UserDep,
+    request: Request,
     confirm: str = Query(..., description="Explicit confirmation required. Set to 'true' to proceed."),
     db: AsyncSession = Depends(get_db),
 ):
@@ -309,6 +364,17 @@ async def admin_delete_user(
     user.is_deleted = True
     user.is_active = False
     await db.commit()
+    
+    # Audit: user deletion
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_USER,
+        AuditService.OP_DELETE,
+        current_user_id,
+        entity_id=user.id,
+        request=request,
+        details=f"Soft-deleted user '{user.username}'",
+    )
 
 
 @router.post("/users/{user_id}/groups/{group_id}", status_code=204)
@@ -316,6 +382,7 @@ async def admin_add_user_to_group(
     user_id: int,
     group_id: int,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Add a user to a group (superuser only)."""
@@ -345,6 +412,17 @@ async def admin_add_user_to_group(
     ug = UserGroup(user_id=user_id, group_id=group_id)
     db.add(ug)
     await db.commit()
+    
+    # Audit: add user to group
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_USER,
+        AuditService.OP_ADD_TO_GROUP,
+        current_user_id,
+        entity_id=user_id,
+        request=request,
+        details=f"Added user '{user.username}' to group '{group.name}' (id={group_id})",
+    )
 
 
 @router.delete("/users/{user_id}/groups/{group_id}", status_code=204)
@@ -352,6 +430,7 @@ async def admin_remove_user_from_group(
     user_id: int,
     group_id: int,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a user from a group (superuser only)."""
@@ -366,6 +445,17 @@ async def admin_remove_user_from_group(
     if ug:
         await db.delete(ug)
         await db.commit()
+        
+        # Audit: remove user from group
+        await AuditService.log_crud(
+            db,
+            AuditService.ENTITY_USER,
+            AuditService.OP_REMOVE_FROM_GROUP,
+            current_user_id,
+            entity_id=user_id,
+            request=request,
+            details=f"Removed user (id={user_id}) from group (id={group_id})",
+        )
 
 
 # ─── Group Administration ──────────────────────────────────────────
@@ -402,6 +492,7 @@ async def admin_list_groups(
 async def admin_create_group(
     group_data: GroupCreate,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new group (superuser only)."""
@@ -419,6 +510,17 @@ async def admin_create_group(
     await db.commit()
     await db.refresh(group)
     
+    # Audit: group creation
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_GROUP,
+        AuditService.OP_CREATE,
+        current_user_id,
+        entity_id=group.id,
+        request=request,
+        details=f"Created group '{group_data.name}' (description={group_data.description})",
+    )
+    
     return GroupResponse(
         id=group.id,
         name=group.name,
@@ -432,6 +534,7 @@ async def admin_update_group(
     group_id: int,
     group_data: GroupUpdate,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Update a group (superuser only)."""
@@ -443,6 +546,7 @@ async def admin_update_group(
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
     
+    changes: list[str] = []
     if group_data.name is not None:
         # Check if name is already used
         existing = await db.execute(
@@ -450,16 +554,30 @@ async def admin_update_group(
         )
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=400, detail="Group name already exists")
+        changes.append(f"name={group_data.name}")
         group.name = group_data.name
     
     if group_data.description is not None:
+        changes.append(f"description={group_data.description}")
         group.description = group_data.description
     
     if group_data.is_active is not None:
+        changes.append(f"is_active={group_data.is_active}")
         group.is_active = group_data.is_active
     
     await db.commit()
     await db.refresh(group)
+    
+    # Audit: group update
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_GROUP,
+        AuditService.OP_UPDATE,
+        current_user_id,
+        entity_id=group.id,
+        request=request,
+        details=f"Updated group '{group.name}': {', '.join(changes)}",
+    )
     
     return GroupResponse(
         id=group.id,
@@ -473,6 +591,7 @@ async def admin_update_group(
 async def admin_delete_group(
     group_id: int,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a group (superuser only)."""
@@ -486,6 +605,17 @@ async def admin_delete_group(
     
     await db.delete(group)
     await db.commit()
+    
+    # Audit: group deletion
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_GROUP,
+        AuditService.OP_DELETE,
+        current_user_id,
+        entity_id=group.id,
+        request=request,
+        details=f"Deleted group '{group.name}' (id={group_id})",
+    )
 
 
 # ─── Backup & Recovery ─────────────────────────────────────────────

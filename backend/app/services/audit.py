@@ -1,4 +1,4 @@
-"""Audit logging service for tracking secret access events."""
+"""Audit logging service for tracking all CRUD and access events."""
 
 from datetime import datetime, timezone
 
@@ -11,11 +11,35 @@ from app.models.audit_log import AuditLog
 
 
 class AuditService:
-    """Service for creating and querying audit logs."""
+    """Service for creating and querying audit logs.
 
+    Supports generic entity logging (users, groups, secrets, secret_groups,
+    api_tokens) with standard operations (create, update, delete, toggle,
+    reset_password, ssh_key_generate, etc.).
+    """
+
+    # Secret access events
     EVENT_REVEAL = "secret_reveal"
     EVENT_COPY = "secret_copy"
     EVENT_VIEW = "secret_view"
+
+    # Standard operation names
+    OP_CREATE = "create"
+    OP_UPDATE = "update"
+    OP_DELETE = "delete"
+    OP_TOGGLE = "toggle_active"
+    OP_RESET_PASSWORD = "reset_password"
+    OP_SSH_KEY_GENERATE = "ssh_key_generate"
+    OP_ADD_TO_GROUP = "add_to_group"
+    OP_REMOVE_FROM_GROUP = "remove_from_group"
+    OP_ACCESS_UPDATE = "access_update"
+
+    # Entity type names
+    ENTITY_USER = "user"
+    ENTITY_GROUP = "group"
+    ENTITY_SECRET = "secret"
+    ENTITY_SECRET_GROUP = "secret_group"
+    ENTITY_API_TOKEN = "api_token"
 
     @staticmethod
     def _is_trusted_proxy(request: Request) -> bool:
@@ -81,6 +105,48 @@ class AuditService:
             secret_id=secret_id,
             ip_address=AuditService._extract_client_ip(request),
             user_agent=AuditService._extract_user_agent(request),
+            details=details,
+            timestamp=datetime.now(timezone.utc),
+        )
+        db.add(audit_entry)
+        await db.commit()
+        await db.refresh(audit_entry)
+        return audit_entry
+
+    @staticmethod
+    async def log_crud(
+        db: AsyncSession,
+        entity_type: str,
+        operation: str,
+        user_id: int,
+        entity_id: int | None = None,
+        request: Request | None = None,
+        details: str | None = None,
+    ) -> AuditLog:
+        """Create an audit log entry for a generic CRUD operation.
+
+        Args:
+            entity_type: One of ENTITY_USER, ENTITY_GROUP, ENTITY_SECRET,
+                ENTITY_SECRET_GROUP, ENTITY_API_TOKEN.
+            operation: One of OP_CREATE, OP_UPDATE, OP_DELETE, etc.
+            user_id: ID of the user performing the operation.
+            entity_id: ID of the affected entity (if applicable).
+            request: Optional FastAPI request for IP/user-agent capture.
+            details: Optional free-form description of what changed.
+        """
+        event_type = f"{entity_type}_{operation}"
+        ip = "unknown"
+        ua = "unknown"
+        if request is not None:
+            ip = AuditService._extract_client_ip(request)
+            ua = AuditService._extract_user_agent(request)
+
+        audit_entry = AuditLog(
+            user_id=user_id,
+            event_type=event_type,
+            secret_id=entity_id,
+            ip_address=ip,
+            user_agent=ua,
             details=details,
             timestamp=datetime.now(timezone.utc),
         )

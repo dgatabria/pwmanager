@@ -289,6 +289,7 @@ async def get_secret(
 async def create_secret(
     secret_data: SecretCreate,
     user_info: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new secret.
@@ -321,6 +322,17 @@ async def create_secret(
     await db.commit()
     await db.refresh(secret)
 
+    # Audit: secret creation
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET,
+        AuditService.OP_CREATE,
+        user_id,
+        entity_id=secret.id,
+        request=request,
+        details=f"Created secret '{secret_data.title}' (type={secret_data.secret_type})",
+    )
+
     return SecretResponse(
         id=secret.id,
         title=secret.title,
@@ -343,6 +355,7 @@ async def update_secret(
     secret_id: int,
     secret_data: SecretUpdate,
     user_info: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Update a secret.
@@ -354,21 +367,39 @@ async def update_secret(
     user_id = user_info["id"]
     secret = await check_secret_access(secret_id, user_id, db, permission="write")
 
+    changes: list[str] = []
     if secret_data.title is not None:
+        changes.append(f"title={secret_data.title}")
         secret.title = secret_data.title
     if secret_data.description is not None:
+        changes.append(f"description={secret_data.description}")
         secret.description = secret_data.description
     if secret_data.plaintext_data is not None:
         secret.encrypted_data = EncryptionService.encrypt(secret_data.plaintext_data)
+        changes.append("data=encrypted")
     if secret_data.key_length is not None:
+        changes.append(f"key_length={secret_data.key_length}")
         secret.key_length = secret_data.key_length
     if secret_data.username is not None:
+        changes.append(f"username={secret_data.username}")
         secret.username = secret_data.username
     if secret_data.url is not None:
+        changes.append(f"url={secret_data.url}")
         secret.url = secret_data.url
 
     await db.commit()
     await db.refresh(secret)
+
+    # Audit: secret update
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET,
+        AuditService.OP_UPDATE,
+        user_id,
+        entity_id=secret.id,
+        request=request,
+        details=f"Updated secret '{secret.title}': {', '.join(changes)}",
+    )
 
     return SecretResponse(
         id=secret.id,
@@ -391,6 +422,7 @@ async def update_secret(
 async def delete_secret(
     secret_id: int,
     user_info: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Soft delete a secret.
@@ -411,45 +443,69 @@ async def delete_secret(
     secret.is_active = False
     await db.commit()
 
+    # Audit: secret deletion
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET,
+        AuditService.OP_DELETE,
+        user_id,
+        entity_id=secret.id,
+        request=request,
+        details=f"Soft-deleted secret '{secret.title}'",
+    )
+
 
 @router.post("/ssh-key/generate", response_model=SSHKeyGenerateResponse)
 async def generate_ssh_key(
-    request: SSHKeyGenerateRequest,
+    request_body: SSHKeyGenerateRequest,
     user_info: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Generate an SSH key pair.
     
     Key length is validated to prevent DoS attacks (2048-8192 bits).
     Comment is limited to 100 characters.
+    
+    Audited for compliance tracking.
     """
     user_id = user_info["id"]
     
     # Validate key_length to prevent resource exhaustion
     min_key_length = 2048
     max_key_length = 8192
-    if request.key_length < min_key_length or request.key_length > max_key_length:
+    if request_body.key_length < min_key_length or request_body.key_length > max_key_length:
         raise HTTPException(
             status_code=400,
             detail=f"Key length must be between {min_key_length} and {max_key_length} bits",
         )
     
     # Validate comment length
-    if len(request.comment) > 100:
+    if len(request_body.comment) > 100:
         raise HTTPException(
             status_code=400,
             detail="Comment must not exceed 100 characters",
         )
     
     private_key, public_key, fingerprint = SecurityUtils.generate_ssh_key(
-        request.key_length, request.comment
+        request_body.key_length, request_body.comment
+    )
+
+    # Audit: SSH key generation
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_API_TOKEN,
+        AuditService.OP_SSH_KEY_GENERATE,
+        user_id,
+        request=request,
+        details=f"Generated SSH key (length={request_body.key_length}, comment='{request_body.comment}', fingerprint={fingerprint})",
     )
 
     return SSHKeyGenerateResponse(
         public_key=public_key,
         private_key=private_key,
         fingerprint=fingerprint,
-        key_length=request.key_length,
+        key_length=request_body.key_length,
     )
 
 

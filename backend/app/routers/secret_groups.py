@@ -9,7 +9,7 @@ Authorization model:
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,7 @@ from app.schemas.secret_group import (
     SecretGroupResponse,
     SecretGroupUpdate,
 )
+from app.services.audit import AuditService
 from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/api/secret-groups", tags=["Secret Groups"])
@@ -112,6 +113,7 @@ async def list_secret_groups(
 async def create_secret_group(
     group_data: SecretGroupCreate,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new secret group. The creator becomes the owner."""
@@ -151,6 +153,17 @@ async def create_secret_group(
             )
             db.add(sgm)
         await db.commit()
+
+    # Audit: secret group creation
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET_GROUP,
+        AuditService.OP_CREATE,
+        current_user_id,
+        entity_id=sg.id,
+        request=request,
+        details=f"Created secret group '{group_data.name}' (parent={group_data.parent_id})",
+    )
 
     return SecretGroupResponse(
         id=sg.id,
@@ -244,17 +257,22 @@ async def update_secret_group(
     group_id: int,
     group_data: SecretGroupUpdate,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Update a secret group (owner only)."""
     sg = await _require_owner(group_id, current_user_id, db)
 
+    changes: list[str] = []
     if group_data.name is not None:
         sg.name = group_data.name
+        changes.append(f"name={group_data.name}")
     if group_data.description is not None:
         sg.description = group_data.description
+        changes.append(f"description={group_data.description}")
     if group_data.is_active is not None:
         sg.is_active = group_data.is_active
+        changes.append(f"is_active={group_data.is_active}")
 
     # Update member access if provided
     if group_data.member_group_ids is not None:
@@ -287,9 +305,21 @@ async def update_secret_group(
                 group_id=gid,
             )
             db.add(sgm)
+        changes.append(f"member_groups={group_data.member_group_ids}")
 
     await db.commit()
     await db.refresh(sg)
+
+    # Audit: secret group update
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET_GROUP,
+        AuditService.OP_UPDATE,
+        current_user_id,
+        entity_id=sg.id,
+        request=request,
+        details=f"Updated secret group '{sg.name}': {', '.join(changes)}",
+    )
 
     return SecretGroupResponse(
         id=sg.id,
@@ -306,6 +336,7 @@ async def update_secret_group(
 async def delete_secret_group(
     group_id: int,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Soft delete a secret group (owner only)."""
@@ -314,12 +345,24 @@ async def delete_secret_group(
     sg.is_active = False
     await db.commit()
 
+    # Audit: secret group deletion
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET_GROUP,
+        AuditService.OP_DELETE,
+        current_user_id,
+        entity_id=sg.id,
+        request=request,
+        details=f"Soft-deleted secret group '{sg.name}' (id={group_id})",
+    )
+
 
 @router.post("/{group_id}/access", status_code=200)
 async def update_group_access(
     group_id: int,
     access_data: SecretGroupAccessUpdate,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Update which user groups can access this secret group (owner only)."""
@@ -357,12 +400,24 @@ async def update_group_access(
 
     await db.commit()
 
+    # Audit: secret group access update
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET_GROUP,
+        AuditService.OP_ACCESS_UPDATE,
+        current_user_id,
+        entity_id=sg.id,
+        request=request,
+        details=f"Updated access for secret group '{sg.name}': members={access_data.member_group_ids}",
+    )
+
 
 @router.post("/{group_id}/groups/{user_group_id}", status_code=204)
 async def add_group_to_secret_group(
     group_id: int,
     user_group_id: int,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Add a user group to a secret group (owner only)."""
@@ -395,12 +450,24 @@ async def add_group_to_secret_group(
     db.add(sgm)
     await db.commit()
 
+    # Audit: add group to secret group
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET_GROUP,
+        AuditService.OP_ADD_TO_GROUP,
+        current_user_id,
+        entity_id=group_id,
+        request=request,
+        details=f"Added group (id={user_group_id}) to secret group (id={group_id})",
+    )
+
 
 @router.delete("/{group_id}/groups/{user_group_id}", status_code=204)
 async def remove_group_from_secret_group(
     group_id: int,
     user_group_id: int,
     current_user_id: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a user group from a secret group (owner only)."""
@@ -417,3 +484,14 @@ async def remove_group_from_secret_group(
     if sgm:
         await db.delete(sgm)
         await db.commit()
+
+        # Audit: remove group from secret group
+        await AuditService.log_crud(
+            db,
+            AuditService.ENTITY_SECRET_GROUP,
+            AuditService.OP_REMOVE_FROM_GROUP,
+            current_user_id,
+            entity_id=group_id,
+            request=request,
+            details=f"Removed group (id={user_group_id}) from secret group (id={group_id})",
+        )
