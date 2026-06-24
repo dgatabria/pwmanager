@@ -354,7 +354,6 @@ async def create_secret(
         username=secret.username,
         url=secret.url,
         group_id=secret.group_id,
-        owner_id=secret.owner_id,
         is_active=secret.is_active,
         created_at=str(secret.created_at),
         updated_at=str(secret.updated_at),
@@ -422,7 +421,6 @@ async def update_secret(
         username=secret.username,
         url=secret.url,
         group_id=secret.group_id,
-        owner_id=secret.owner_id,
         is_active=secret.is_active,
         created_at=str(secret.created_at),
         updated_at=str(secret.updated_at),
@@ -503,9 +501,9 @@ async def generate_ssh_key(
         request_body.key_length, request_body.comment
     )
 
-    # Encrypt the private key before returning it to prevent exposure
-    # in logs, browser history, or network sniffing
-    encrypted_private_key = EncryptionService.encrypt(private_key)
+    # The private key is intentionally NOT returned to prevent exposure
+    # in logs, browser history, or network traffic.
+    # The public key and fingerprint are returned for verification.
 
     # Audit: SSH key generation
     await AuditService.log_crud(
@@ -519,7 +517,6 @@ async def generate_ssh_key(
 
     return SSHKeyGenerateResponse(
         public_key=public_key,
-        private_key_encrypted=encrypted_private_key,
         fingerprint=fingerprint,
         key_length=request_body.key_length,
     )

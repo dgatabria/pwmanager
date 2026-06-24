@@ -129,9 +129,9 @@ class SSHKeyGenerateRequest(BaseModel):
 
 
 class SSHKeyGenerateResponse(BaseModel):
-    """SSH key pair response. The private_key is encrypted server-side
-    so it is never transmitted or stored in plaintext."""
+    """SSH key pair response. Only the public key and metadata are returned.
+    The private key is never transmitted to prevent exposure in logs,
+    browser history, or network traffic."""
     public_key: str
-    private_key_encrypted: str
     fingerprint: str
     key_length: int

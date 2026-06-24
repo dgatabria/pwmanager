@@ -200,10 +200,6 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
         data={
             "sub": str(user.id),
             "tv": user.token_version,
-            "username": user.username,
-            "email": user.email,
-            "full_name": user.full_name,
-            "is_superuser": user.is_superuser,
         }
     )
 
@@ -309,14 +305,20 @@ async def get_me(
 async def logout(
     response: Response,
     request: Request = Depends(),
+    authorization: Annotated[str | None, Header()] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Logout by clearing the httpOnly JWT cookie AND revoking the token.
 
-    The JWT JTI (JWT ID) is extracted from the cookie and inserted into the
+    The JWT JTI (JWT ID) is extracted from both the cookie and the
+    Authorization header (Bearer token) and inserted into the
     revoked_tokens table so that the token is rejected server-side even
-    before it expires. This prevents replay attacks on stolen tokens.
+    before it expires. This prevents replay attacks on stolen tokens
+    from any authentication mechanism.
     """
+    revoked_any = False
+
+    # Revoke token from cookie
     token = request.cookies.get(JWT_COOKIE_NAME)
     if token:
         try:
@@ -336,10 +338,38 @@ async def logout(
                         + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
                     )
                 )
-                await db.commit()
+                revoked_any = True
         except Exception:
             # Token may be expired or invalid — still clear the cookie
             pass
+
+    # Revoke token from Authorization header (Bearer token)
+    if authorization and authorization.startswith("Bearer "):
+        bearer_token = authorization.split(" ", 1)[1]
+        try:
+            payload = AuthService.decode_token(bearer_token)
+            jti = payload.get("jti")
+            if jti:
+                await db.execute(
+                    text(
+                        "INSERT INTO revoked_tokens (jti, user_id, reason, expires_at) "
+                        "VALUES (:jti, :user_id, :reason, :expires_at) "
+                        "ON CONFLICT (jti) DO NOTHING"
+                    ).bindparams(
+                        jti=jti,
+                        user_id=str(payload.get("sub", "")),
+                        reason="logout",
+                        expires_at=datetime.now(timezone.utc)
+                        + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+                    )
+                )
+                revoked_any = True
+        except Exception:
+            # Token may be expired or invalid — still proceed with logout
+            pass
+
+    if revoked_any:
+        await db.commit()
 
     response.delete_cookie(
         key=JWT_COOKIE_NAME,
