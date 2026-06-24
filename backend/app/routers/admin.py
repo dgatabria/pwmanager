@@ -26,9 +26,17 @@ from app.schemas.auth import (
     SAMLConfigResponse,
     SAMLConfigUpdate,
 )
+from app.schemas.backup import (
+    BackupStatusResponse,
+    BackupInfo,
+    BackupListResponse,
+    BackupExecuteResponse,
+    BackupRestoreResponse,
+)
 from app.schemas.group import GroupCreate, GroupResponse, GroupUpdate
 from app.services.encryption import EncryptionService
 from app.services.audit import AuditService
+from app.services.backup import BackupService
 from app.utils.security import SecurityUtils
 from app.routers.auth import get_current_user
 
@@ -991,3 +999,66 @@ async def admin_rotation_status(
         "maintenance_mode": in_maintenance,
         "message": "System is in maintenance mode" if in_maintenance else "System is operational",
     }
+
+
+# ─── Backup / Restore Endpoints ──────────────────────────────────────
+
+@router.get("/backup/status", response_model=BackupStatusResponse)
+@_admin_limiter.limit("10/minute")
+async def get_backup_status(
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the backup status including counts and last backup info."""
+    await require_superuser(current_user_id, db)
+
+    status_data = await BackupService.get_backup_status()
+    return BackupStatusResponse(**status_data)
+
+
+@router.get("/backup/list", response_model=BackupListResponse)
+@_admin_limiter.limit("10/minute")
+async def list_backups(
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all available backups."""
+    await require_superuser(current_user_id, db)
+
+    backups = BackupService.list_backups()
+    return BackupListResponse(backups=backups)
+
+
+@router.post("/backup/execute", response_model=BackupExecuteResponse)
+@_admin_limiter.limit("5/minute")
+async def execute_backup(
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Execute a full backup of the database and encryption keys."""
+    await require_superuser(current_user_id, db)
+
+    result = await BackupService.execute_backup()
+    return BackupExecuteResponse(**result)
+
+
+@router.post("/backup/{backup_id}/restore", response_model=BackupRestoreResponse)
+@_admin_limiter.limit("5/minute")
+async def restore_backup(
+    backup_id: str,
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+):
+    """Restore the database and encryption keys from a backup."""
+    await require_superuser(current_user_id, db)
+
+    # Optionally enforce maintenance mode for safety
+    # in_maintenance = await is_maintenance_mode()
+    # if not in_maintenance:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_423_LOCKED,
+    #         detail="Restore can only be performed during maintenance mode",
+    #     )
+
+    result = await BackupService.restore_backup(backup_id)
+    return BackupRestoreResponse(**result)
