@@ -26,6 +26,14 @@ services:
     volumes:
       - encryption_key:/app/app
 
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
 volumes:
   pgdata:
   encryption_key:
