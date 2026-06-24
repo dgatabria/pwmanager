@@ -67,16 +67,20 @@ generate_secrets() {
     mkdir -p "$SCRIPT_DIR/backend/secrets"
 
     openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/postgres_password.txt"
+    chmod 0o600 "$SCRIPT_DIR/backend/secrets/postgres_password.txt"
     log "  postgres_password: $(wc -c < "$SCRIPT_DIR/backend/secrets/postgres_password.txt") bytes hex"
 
     openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/secret_key.txt"
+    chmod 0o600 "$SCRIPT_DIR/backend/secrets/secret_key.txt"
     log "  secret_key (JWT):  $(wc -c < "$SCRIPT_DIR/backend/secrets/secret_key.txt") bytes hex"
 
     openssl rand -base64 32 > "$SCRIPT_DIR/backend/secrets/encryption_key.txt"
+    chmod 0o600 "$SCRIPT_DIR/backend/secrets/encryption_key.txt"
     log "  encryption_key:    $(wc -c < "$SCRIPT_DIR/backend/secrets/encryption_key.txt") bytes base64"
 
     # Dedicated application database user (least-privilege, not superuser)
     openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/app_password.txt"
+    chmod 0o600 "$SCRIPT_DIR/backend/secrets/app_password.txt"
     log "  app_password:      $(wc -c < "$SCRIPT_DIR/backend/secrets/app_password.txt") bytes hex"
 }
 
@@ -96,6 +100,7 @@ POSTGRES_DB=password_manager
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=${pg_password}
 EOF
+    chmod 0o600 "$SCRIPT_DIR/.env.db"
     log "  .env.db created"
 
     cat > "$SCRIPT_DIR/.env.backend" <<EOF
@@ -105,6 +110,7 @@ EOF
 DATABASE_URL=postgresql+asyncpg://password_manager_app:${app_password}@db:5432/password_manager
 ENCRYPTION_KEY=${enc_key}
 EOF
+    chmod 0o600 "$SCRIPT_DIR/.env.backend"
     log "  .env.backend created"
 }
 

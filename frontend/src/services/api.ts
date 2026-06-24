@@ -1,8 +1,46 @@
+// ─── CSRF Token Management ──────────────────────────────────────────
+let csrfToken: string | null = null
+
+/**
+ * Fetch a fresh CSRF token from the server and cache it.
+ * The token is also stored in an httpOnly cookie by the server.
+ */
+async function ensureCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken
+
+  try {
+    const res = await fetch('/api/auth/csrf-token', {
+      method: 'GET',
+      credentials: 'include',
+    })
+    if (res.ok) {
+      const data = await res.json()
+      csrfToken = data.csrf_token
+      return csrfToken
+    }
+  } catch {
+    // If we can't fetch a token, proceed without CSRF protection
+    // (e.g., during initial page load before the backend is ready)
+  }
+  return ''
+}
+
 const api = {
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    // Attach CSRF token to state-changing requests
+    const isUnsafeMethod = options.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method)
+    if (isUnsafeMethod) {
+      csrfToken = await ensureCsrfToken()
+    }
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...options.headers,
+    }
+
+    // Attach CSRF token header for unsafe methods
+    if (isUnsafeMethod && csrfToken) {
+      headers['X-CSRF-Token'] = csrfToken
     }
 
     const response = await fetch(`/api${endpoint}`, {
@@ -15,6 +53,16 @@ const api = {
       // Token expired or invalid — redirect to login
       window.location.href = '/login'
       throw new Error('Unauthorized')
+    }
+
+    // If CSRF token was invalidated (403), refresh it and retry once
+    if (response.status === 403 && isUnsafeMethod) {
+      const body = await response.json().catch(() => ({}))
+      if (body.detail?.includes?.('CSRF')) {
+        csrfToken = null // Force refresh
+        return api.request<T>(endpoint, options)
+      }
+      throw new Error(body.detail || 'Forbidden')
     }
 
     if (!response.ok) {

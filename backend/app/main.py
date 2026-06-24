@@ -1,8 +1,9 @@
 """FastAPI application for the Password Manager."""
 
+import secrets as secrets_module
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -27,6 +28,53 @@ app = FastAPI(
 
 # Rate limiter dependency
 app.state.limiter = limiter
+
+# ─── CSRF Protection ─────────────────────────────────────────────────
+# Generates a cryptographically random token stored in a secure,
+# httpOnly cookie and validated on all state-changing requests via
+# the "X-CSRF-Token" header.  This protects cookie-based auth against
+# CSRF attacks.
+
+CSRF_TOKEN_COOKIE = "csrf_token"
+
+
+async def csrf_protect(request: Request, call_next):
+    """Middleware that validates CSRF tokens on unsafe HTTP methods."""
+    # Safe methods never need CSRF validation.
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        response = await call_next(request)
+        # Ensure the cookie is present so the frontend can read it.
+        if CSRF_TOKEN_COOKIE not in request.cookies:
+            _set_csrf_cookie(response)
+        return response
+
+    # For unsafe methods, require the CSRF token header.
+    token = request.headers.get("x-csrf-token")
+    cookie_token = request.cookies.get(CSRF_TOKEN_COOKIE)
+
+    if not token or not cookie_token or not secrets_module.compare_digest(token, cookie_token):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "CSRF token missing or invalid"},
+        )
+
+    response = await call_next(request)
+    return response
+
+
+def _set_csrf_cookie(response: Response) -> None:
+    """Set a new CSRF token cookie if one is not already present."""
+    if CSRF_TOKEN_COOKIE not in response.headers.get("set-cookie", ""):
+        token = secrets_module.token_hex(32)
+        response.set_cookie(
+            key=CSRF_TOKEN_COOKIE,
+            value=token,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=3600,  # 1 hour
+            path="/",
+        )
 
 # ─── Maintenance Mode ───────────────────────────────────────────────
 # Persistent flag stored in the database so it survives restarts and works
@@ -86,6 +134,9 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
+# CSRF middleware — must run before CORS so the cookie is set correctly.
+app.middleware("http")(csrf_protect)
+
 # CORS - restricted to specific allowed origins from environment
 _allowed_origins = settings.get_allowed_origins_list()
 # When allow_credentials=True, allow_origins must NOT contain "*" or "*"
@@ -95,7 +146,7 @@ app.add_middleware(
     allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Api-Key"],
+    allow_headers=["Authorization", "Content-Type", "X-Api-Key", "X-CSRF-Token"],
 )
 
 # Register routers

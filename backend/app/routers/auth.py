@@ -1,5 +1,6 @@
 """Authentication API endpoints."""
 
+import secrets as secrets_module
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
@@ -22,6 +23,9 @@ limiter = app.state.limiter
 
 # JWT cookie name
 JWT_COOKIE_NAME = "access_token"
+
+# CSRF cookie name (must match main.py)
+CSRF_TOKEN_COOKIE = "csrf_token"
 
 
 async def get_current_user(
@@ -246,3 +250,24 @@ async def logout(response: Response):
         path="/",
     )
     return {"message": "Logged out successfully"}
+
+
+@router.get("/csrf-token")
+async def get_csrf_token(response: Response):
+    """Return a new CSRF token.
+
+    The token is set as an httpOnly, Secure cookie and also returned in the
+    JSON body so the frontend can read it and attach ``X-CSRF-Token`` to
+    subsequent state-changing requests.
+    """
+    token = secrets_module.token_hex(32)
+    response.set_cookie(
+        key=CSRF_TOKEN_COOKIE,
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=3600,
+        path="/",
+    )
+    return {"csrf_token": token}

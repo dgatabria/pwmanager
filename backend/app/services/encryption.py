@@ -55,7 +55,8 @@ class EncryptionService:
         # TOCTOU race where two processes generate different keys)
         new_key = base64.urlsafe_b64encode(os.urandom(32)).decode()
         try:
-            with open(_ENCRYPTION_KEY_FILE, "x") as f:
+            fd = os.open(_ENCRYPTION_KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w") as f:
                 f.write(new_key)
             settings.ENCRYPTION_KEY = new_key
             return new_key

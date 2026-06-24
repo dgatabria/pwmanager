@@ -31,12 +31,17 @@ def _get_passphrase() -> str | None:
     return os.environ.get("RSA_KEY_PASSPHRASE")
 
 
-def _get_encryption_algorithm() -> serialization.NoEncryption | serialization.BestAvailableEncryption:
-    """Return the encryption algorithm for the private key file."""
+def _get_encryption_algorithm() -> serialization.BestAvailableEncryption:
+    """Return the encryption algorithm for the private key file.
+
+    The passphrase is validated at startup (config.py) so this function
+    always returns an encryption algorithm — NoEncryption is never used.
+    """
     passphrase = _get_passphrase()
-    if passphrase:
-        return serialization.BestAvailableEncryption(passphrase.encode("utf-8"))
-    return serialization.NoEncryption()
+    # _rsa_passphrase is already validated at startup; this is a defensive
+    # assertion that should never fail in normal operation.
+    assert passphrase, "RSA_KEY_PASSPHRASE must be set — validated at startup"
+    return serialization.BestAvailableEncryption(passphrase.encode("utf-8"))
 
 
 def _generate_key_pair() -> tuple[str, str]:
@@ -96,9 +101,11 @@ def _ensure_keys_exist() -> tuple[str, str]:
     # If neither key exists, generate both
     if not os.path.exists(_PRIVATE_KEY_PATH) and not os.path.exists(_PUBLIC_KEY_PATH):
         private_pem, public_pem = _generate_key_pair()
-        with open(_PRIVATE_KEY_PATH, "w") as f:
+        fd_priv = os.open(_PRIVATE_KEY_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd_priv, "w") as f:
             f.write(private_pem)
-        with open(_PUBLIC_KEY_PATH, "w") as f:
+        fd_pub = os.open(_PUBLIC_KEY_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        with os.fdopen(fd_pub, "w") as f:
             f.write(public_pem)
         return private_pem, public_pem
 

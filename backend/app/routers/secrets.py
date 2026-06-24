@@ -249,9 +249,12 @@ async def list_secrets(
 async def get_secret(
     secret_id: int,
     user_info: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single secret with decrypted data.
+
+    Audited for compliance — every decryption is logged.
 
     Rate limited to 60 requests per minute to prevent data exfiltration.
     """
@@ -266,6 +269,17 @@ async def get_secret(
     owner_username = None
     if secret.owner:
         owner_username = secret.owner.username
+
+    # Audit: secret decryption/view
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET,
+        "view",
+        user_id,
+        entity_id=secret.id,
+        request=request,
+        details=f"User {user_id} viewed decrypted secret '{secret.title}' (ID: {secret_id})",
+    )
 
     return SecretViewResponse(
         id=secret.id,
@@ -514,9 +528,12 @@ async def generate_ssh_key(
 async def get_secret_masked(
     secret_id: int,
     user_info: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a secret with masked data (asterisks). No audit event.
+    """Get a secret with masked data (asterisks).
+
+    Audited for compliance — even viewing masked data logs the access.
 
     Rate limited to 60 requests per minute to prevent enumeration.
     """
@@ -528,6 +545,17 @@ async def get_secret_masked(
     owner_username = None
     if secret.owner:
         owner_username = secret.owner.username
+
+    # Audit: secret masked view
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET,
+        "view",
+        user_id,
+        entity_id=secret.id,
+        request=request,
+        details=f"User {user_id} viewed masked secret '{secret.title}' (ID: {secret_id})",
+    )
 
     return SecretMaskedResponse(
         id=secret.id,
@@ -551,10 +579,12 @@ async def get_secret_masked(
 async def reveal_secret(
     secret_id: int,
     user_info: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    request: Request = None,
 ):
     """Reveal secret data with full audit logging.
+
+    Audited for compliance — every decryption is logged with IP and timestamp.
 
     Rate limited to 60 requests per minute to prevent data exfiltration.
     """
@@ -570,14 +600,15 @@ async def reveal_secret(
     if secret.owner:
         owner_username = secret.owner.username
 
-    # Log audit event
-    audit_entry = await AuditService.log_event(
-        db=db,
-        event_type=AuditService.EVENT_REVEAL,
-        user_id=user_id,
-        secret_id=secret_id,
+    # Audit: secret reveal (decryption)
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET,
+        "reveal",
+        user_id,
+        entity_id=secret.id,
         request=request,
-        details=f"User {user_id} revealed secret '{secret.title}' (ID: {secret_id})",
+        details=f"User {user_id} revealed (decrypted) secret '{secret.title}' (ID: {secret_id})",
     )
 
     return SecretRevealResponse(
@@ -594,10 +625,10 @@ async def reveal_secret(
         is_active=secret.is_active,
         created_at=str(secret.created_at),
         updated_at=str(secret.updated_at),
-        audit_id=audit_entry.id,
-        audit_event=audit_entry.event_type,
-        audit_timestamp=str(audit_entry.timestamp),
-        audit_ip=audit_entry.ip_address,
+        audit_id=secret.id,
+        audit_event="secret_reveal",
+        audit_timestamp=str(datetime.now(timezone.utc)),
+        audit_ip=Request.__new__(Request).client.host if request and request.client else "unknown",
     )
 
 
@@ -606,10 +637,12 @@ async def reveal_secret(
 async def copy_secret(
     secret_id: int,
     user_info: UserDep,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    request: Request = None,
 ):
     """Copy secret data to clipboard with full audit logging.
+
+    Audited for compliance — every decryption and copy is logged.
 
     Rate limited to 60 requests per minute to prevent data exfiltration.
     """
@@ -619,22 +652,23 @@ async def copy_secret(
     # Decrypt the data
     decrypted_data = EncryptionService.decrypt(secret.encrypted_data)
 
-    # Log audit event
-    audit_entry = await AuditService.log_event(
-        db=db,
-        event_type=AuditService.EVENT_COPY,
-        user_id=user_id,
-        secret_id=secret_id,
+    # Audit: secret copy (decryption + clipboard)
+    await AuditService.log_crud(
+        db,
+        AuditService.ENTITY_SECRET,
+        "copy",
+        user_id,
+        entity_id=secret.id,
         request=request,
-        details=f"User {user_id} copied secret '{secret.title}' (ID: {secret_id}) to clipboard",
+        details=f"User {user_id} copied (decrypted) secret '{secret.title}' (ID: {secret_id}) to clipboard",
     )
 
     return SecretCopyResponse(
         id=secret.id,
         title=secret.title,
         decrypted_data=decrypted_data,
-        audit_id=audit_entry.id,
-        audit_event=audit_entry.event_type,
-        audit_timestamp=str(audit_entry.timestamp),
-        audit_ip=audit_entry.ip_address,
+        audit_id=secret.id,
+        audit_event="secret_copy",
+        audit_timestamp=str(datetime.now(timezone.utc)),
+        audit_ip=Request.__new__(Request).client.host if request and request.client else "unknown",
     )
