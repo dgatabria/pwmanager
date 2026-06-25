@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.group import Group
+from app.models.secret import Secret
 from app.models.secret_group import SecretGroup
 from app.models.secret_group_member import SecretGroupMember
 from app.models.user import User
@@ -119,6 +120,7 @@ async def create_secret_group(
     """Create a new secret group. The creator becomes the owner.
 
     Authorization: the user may only share with groups they belong to.
+    Duplicate names per user are not allowed.
     """
     # Get the user's own group memberships
     result = await db.execute(
@@ -150,6 +152,20 @@ async def create_secret_group(
                 status_code=403,
                 detail=f"Cannot share with groups: {', '.join(str(g) for g in bad)} ({'; '.join(reason)})"
             )
+
+    # Check for duplicate name (case-insensitive, same owner, active)
+    result = await db.execute(
+        select(SecretGroup).where(
+            SecretGroup.owner_id == current_user_id,
+            SecretGroup.is_active == True,
+            SecretGroup.name.ilike(group_data.name),
+        )
+    )
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail=f"A secret group with name '{group_data.name}' already exists",
+        )
 
     sg = SecretGroup(
         name=group_data.name,
@@ -373,13 +389,33 @@ async def delete_secret_group(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Soft delete a secret group (owner only)."""
+    """Permanently delete a secret group and all secrets within it (owner only).
+
+    This is a hard delete — all secrets in the group are permanently removed
+    along with group memberships. The operation is auditable.
+    """
     sg = await _require_owner(group_id, current_user_id, db)
 
-    sg.is_active = False
+    # Delete all secrets in this group (hard delete, not soft)
+    result = await db.execute(
+        select(Secret).where(Secret.group_id == group_id)
+    )
+    secrets = result.scalars().all()
+    for secret in secrets:
+        await db.delete(secret)
+
+    # Delete all group memberships
+    await db.execute(
+        SecretGroupMember.__table__.delete().where(
+            SecretGroupMember.secret_group_id == group_id
+        )
+    )
+
+    # Delete the group itself
+    await db.delete(sg)
     await db.commit()
 
-    # Audit: secret group deletion
+    # Audit: secret group permanent deletion
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_SECRET_GROUP,
@@ -387,7 +423,7 @@ async def delete_secret_group(
         current_user_id,
         entity_id=sg.id,
         request=request,
-        details=f"Soft-deleted secret group '{sg.name}' (id={group_id})",
+        details=f"Permanently deleted secret group '{sg.name}' (id={group_id}) with {len(secrets)} secret(s)",
     )
 
 

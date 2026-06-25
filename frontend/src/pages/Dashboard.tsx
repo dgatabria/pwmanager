@@ -13,7 +13,7 @@ import UserManagement from '../components/UserManagement'
 import CreateSecretGroupModal from '../components/CreateSecretGroupModal'
 
 export default function Dashboard() {
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const navigate = useNavigate()
 
   // State
@@ -102,6 +102,16 @@ export default function Dashboard() {
   const handleCreateGroup = async () => {
     await fetchData()
     setShowCreateGroupModal(false)
+  }
+
+  // Handle secret group deletion
+  const handleDeleteSecretGroup = async (groupId: number) => {
+    try {
+      await api.delete(`/api/secret-groups/${groupId}`)
+      await fetchData()
+    } catch (err: any) {
+      setError(err.message)
+    }
   }
 
   const handleAddSSHKey = async () => {
@@ -198,6 +208,7 @@ export default function Dashboard() {
               selectedGroupId={selectedGroupId}
               onSelectGroup={setSelectedGroupId}
               onAddGroup={() => setShowCreateGroupModal(true)}
+              onDeleteGroup={handleDeleteSecretGroup}
             />
 
             {/* Center - Secret List */}

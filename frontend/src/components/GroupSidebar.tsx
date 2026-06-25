@@ -6,9 +6,10 @@ interface Props {
   selectedGroupId: number | null
   onSelectGroup: (id: number | null) => void
   onAddGroup: () => void
+  onDeleteGroup?: (id: number) => void
 }
 
-export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSelectGroup, onAddGroup }: Props) {
+export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSelectGroup, onAddGroup, onDeleteGroup }: Props) {
   return (
     <div className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-y-auto">
       {/* Header with Add button */}
@@ -53,16 +54,22 @@ export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSe
           </div>
         ) : (
           groups.map((group) => (
-            <button
+            <div
               key={group.id}
-              onClick={() => onSelectGroup(group.id)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition group relative ${
+              className={`mb-1 rounded-lg transition group relative ${
                 selectedGroupId === group.id
-                  ? 'bg-blue-50 text-blue-700 font-medium'
-                  : 'text-gray-600 hover:bg-gray-50'
+                  ? 'bg-blue-50'
+                  : 'hover:bg-gray-50'
               }`}
             >
-              <div className="flex items-center gap-2">
+              <button
+                onClick={() => onSelectGroup(group.id)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition flex items-center gap-2 ${
+                  selectedGroupId === group.id
+                    ? 'text-blue-700 font-medium'
+                    : 'text-gray-600'
+                }`}
+              >
                 <span className="truncate flex-1">{group.name}</span>
                 {/* Access badge */}
                 {group.group_ids && group.group_ids.length > 0 ? (
@@ -74,14 +81,31 @@ export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSe
                     P
                   </span>
                 )}
-              </div>
+              </button>
+              {/* Delete button - only visible on hover, only for owner */}
+              {onDeleteGroup && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (confirm(`Delete "${group.name}" and all secrets inside?`)) {
+                      onDeleteGroup(group.id)
+                    }
+                  }}
+                  className="absolute right-1 bottom-1 p-0.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition"
+                  title="Delete group"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              )}
               {/* Owner tooltip */}
               {group.owner_username && (
-                <span className="absolute bottom-0.5 right-1 text-[9px] text-gray-400 opacity-0 group-hover:opacity-100 transition">
+                <span className="absolute bottom-0.5 left-2 text-[9px] text-gray-400 opacity-0 group-hover:opacity-100 transition">
                   {group.owner_username}
                 </span>
               )}
-            </button>
+            </div>
           ))
         )}
       </div>

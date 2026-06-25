@@ -100,7 +100,7 @@ export interface SecretGroup {
   name: string
   description: string | null
   parent_id: number | null
-  group_id: number
+  group_id: number | null
   owner_id: number
   owner_username?: string
   is_active: boolean
