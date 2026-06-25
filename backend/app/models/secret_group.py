@@ -22,8 +22,8 @@ class SecretGroup(Base):
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("secret_groups.id"), nullable=True
     )
-    group_id: Mapped[int] = mapped_column(
-        ForeignKey("groups.id"), nullable=False
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("groups.id"), nullable=True, default=None
     )
     owner_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"), nullable=False

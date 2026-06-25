@@ -8,7 +8,7 @@ class SecretGroupCreate(BaseModel):
     name: str
     description: str | None = None
     parent_id: int | None = None
-    group_id: int
+    group_id: int | None = None
     # Which user groups should have access to this secret group
     member_group_ids: list[int] = []
 

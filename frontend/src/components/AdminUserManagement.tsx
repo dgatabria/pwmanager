@@ -21,6 +21,12 @@ export default function AdminUserManagement() {
   })
   const [showGroupModal, setShowGroupModal] = useState<number | null>(null)
 
+  // Group management state
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'groups'>('users')
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false)
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null)
+  const [newGroup, setNewGroup] = useState({ name: '', description: '' })
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -143,20 +149,113 @@ export default function AdminUserManagement() {
     return groups.filter(g => g.user_ids?.includes(userId))
   }
 
+  // ─── Group Management Handlers ────────────────────────────────────
+
+  const handleCreateGroup = async () => {
+    if (!newGroup.name.trim()) {
+      setError('Group name is required')
+      return
+    }
+    try {
+      await api.post('/admin/groups', newGroup)
+      setShowCreateGroupModal(false)
+      setNewGroup({ name: '', description: '' })
+      await fetchData()
+    } catch (err: any) {
+      setError(err.message || 'Failed to create group')
+    }
+  }
+
+  const handleUpdateGroup = async () => {
+    if (!editingGroup) return
+    if (!editingGroup.name.trim()) {
+      setError('Group name is required')
+      return
+    }
+    try {
+      await api.put(`/admin/groups/${editingGroup.id}`, {
+        name: editingGroup.name,
+        description: editingGroup.description || null,
+        is_active: editingGroup.is_active,
+      })
+      setEditingGroup(null)
+      await fetchData()
+    } catch (err: any) {
+      setError(err.message || 'Failed to update group')
+    }
+  }
+
+  const handleDeleteGroup = async (groupId: number) => {
+    if (!confirm('Are you sure you want to delete this group? Users will be removed from it.')) return
+    try {
+      await api.delete(`/admin/groups/${groupId}`)
+      await fetchData()
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete group')
+    }
+  }
+
+  const handleToggleGroupActive = async (groupId: number) => {
+    const group = groups.find(g => g.id === groupId)
+    if (!group) return
+    try {
+      await api.put(`/admin/groups/${groupId}`, { is_active: !group.is_active })
+      await fetchData()
+    } catch (err: any) {
+      setError(err.message || 'Failed to update group')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
+        <h1 className="text-2xl font-bold text-gray-900">User & Group Management</h1>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2">
         <button
-          onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+          onClick={() => setActiveSubTab('users')}
+          className={`px-4 py-2 rounded-lg font-medium transition ${
+            activeSubTab === 'users' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
+          }`}
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Create User
+          <span className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            Users
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('groups')}
+          className={`px-4 py-2 rounded-lg font-medium transition ${
+            activeSubTab === 'groups' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.858M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.858M7 20H2v-2a3 3 0 015.356-1.858M7 20v-2c0-.656.126-1.283.356-1.858m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Groups
+          </span>
         </button>
       </div>
+
+      {/* Users sub-tab */}
+      {activeSubTab === 'users' && (
+        <>
+          <div className="flex justify-between items-center">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create User
+            </button>
+          </div>
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
@@ -411,6 +510,209 @@ export default function AdminUserManagement() {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
+      )}
+
+      {/* Groups sub-tab */}
+      {activeSubTab === 'groups' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">User Groups (RBAC)</h2>
+              <p className="text-sm text-gray-500">Manage user groups for role-based access control. Groups are used to control access to secret groups.</p>
+            </div>
+            <button
+              onClick={() => {
+                setEditingGroup(null)
+                setNewGroup({ name: '', description: '' })
+                setShowCreateGroupModal(true)
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create Group
+            </button>
+          </div>
+
+          {groups.length === 0 ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+              <p className="text-gray-500">No groups configured yet.</p>
+              <button
+                onClick={() => setShowCreateGroupModal(true)}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium mt-2"
+              >
+                + Create your first group
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Members</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {groups.map((group) => (
+                    <tr key={group.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        {editingGroup?.id === group.id ? (
+                          <input
+                            type="text"
+                            value={editingGroup.name}
+                            onChange={(e) => setEditingGroup({ ...editingGroup, name: e.target.value })}
+                            className="w-full px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            autoFocus
+                          />
+                        ) : (
+                          <span className="font-medium text-gray-900">{group.name}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {editingGroup?.id === group.id ? (
+                          <input
+                            type="text"
+                            value={editingGroup.description || ''}
+                            onChange={(e) => setEditingGroup({ ...editingGroup, description: e.target.value || null })}
+                            className="w-full px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        ) : (
+                          <span className="text-gray-500">{group.description || '—'}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        <span className="inline-block px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">
+                          {group.user_ids?.length || 0} users
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          group.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {group.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {editingGroup?.id === group.id ? (
+                            <>
+                              <button
+                                onClick={handleUpdateGroup}
+                                className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={() => setEditingGroup(null)}
+                                className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => setEditingGroup({ ...group })}
+                                className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleToggleGroupActive(group.id)}
+                                className={`px-2 py-1 text-xs rounded ${
+                                  group.is_active
+                                    ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                                    : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                }`}
+                              >
+                                {group.is_active ? 'Deactivate' : 'Activate'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteGroup(group.id)}
+                                className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create Group Modal */}
+      {showCreateGroupModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md m-4 p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">
+              {editingGroup ? 'Edit Group' : 'Create New Group'}
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Group Name *</label>
+                <input
+                  type="text"
+                  value={editingGroup ? editingGroup.name : newGroup.name}
+                  onChange={(e) => {
+                    if (editingGroup) {
+                      setEditingGroup({ ...editingGroup, name: e.target.value })
+                    } else {
+                      setNewGroup({ ...newGroup, name: e.target.value })
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <input
+                  type="text"
+                  value={editingGroup ? (editingGroup.description || '') : newGroup.description}
+                  onChange={(e) => {
+                    if (editingGroup) {
+                      setEditingGroup({ ...editingGroup, description: e.target.value || null })
+                    } else {
+                      setNewGroup({ ...newGroup, description: e.target.value })
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowCreateGroupModal(false)
+                    setEditingGroup(null)
+                    setNewGroup({ name: '', description: '' })
+                  }}
+                  className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={editingGroup ? handleUpdateGroup : handleCreateGroup}
+                  className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                >
+                  {editingGroup ? 'Update' : 'Create'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

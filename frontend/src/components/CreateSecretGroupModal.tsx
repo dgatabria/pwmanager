@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import api from '../services/api'
 import type { Group, SecretGroup } from '../types'
 
@@ -11,18 +11,10 @@ interface Props {
 export default function CreateSecretGroupModal({ userGroups, onClose, onSuccess }: Props) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [visibility, setVisibility] = useState<'private' | 'shared'>('private')
   const [selectedGroups, setSelectedGroups] = useState<number[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    // Auto-select first available group if none selected
-    if (selectedGroupId === null && userGroups.length > 0) {
-      setSelectedGroupId(userGroups[0].id)
-    }
-  }, [userGroups, selectedGroupId])
 
   const toggleGroup = (groupId: number) => {
     setSelectedGroups(prev =>
@@ -33,17 +25,18 @@ export default function CreateSecretGroupModal({ userGroups, onClose, onSuccess 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    if (!selectedGroupId) return
 
     setLoading(true)
     setError('')
 
     try {
+      // If private: group_id is null (personal), no member groups
+      // If shared: group_id is null, member_group_ids contains the selected groups
       await api.post<SecretGroup>('/api/secret-groups', {
         name: name.trim(),
         description: description.trim() || null,
         parent_id: null,
-        group_id: selectedGroupId,
+        group_id: null,
         member_group_ids: visibility === 'shared' ? selectedGroups : [],
       })
       onSuccess()
@@ -103,24 +96,6 @@ export default function CreateSecretGroupModal({ userGroups, onClose, onSuccess 
             />
           </div>
 
-          {/* Target Group */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Target Group <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={selectedGroupId || ''}
-              onChange={e => setSelectedGroupId(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white"
-              required
-            >
-              <option value="">Select a group...</option>
-              {userGroups.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-          </div>
-
           {/* Visibility */}
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
@@ -164,29 +139,40 @@ export default function CreateSecretGroupModal({ userGroups, onClose, onSuccess 
             </div>
 
             {/* Group selectors (only when shared) */}
-            {visibility === 'shared' && userGroups.length > 0 && (
+            {visibility === 'shared' && (
               <div className="p-4 bg-gray-50 border-t border-gray-200">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
-                  Select groups to share with
-                </p>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {userGroups.map(g => (
-                    <label
-                      key={g.id}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition ${
-                        selectedGroups.includes(g.id) ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-100 border border-transparent'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedGroups.includes(g.id)}
-                        onChange={() => toggleGroup(g.id)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                      />
-                      <span className="text-sm text-gray-700">{g.name}</span>
-                    </label>
-                  ))}
-                </div>
+                {userGroups.length === 0 ? (
+                  <p className="text-xs text-gray-500 italic">
+                    You are not a member of any user groups. Contact your administrator to be added to a group.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                      Select groups to share with
+                    </p>
+                    <p className="text-xs text-gray-400 mb-2">
+                      Leave unchecked for personal access only (no group sharing).
+                    </p>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {userGroups.map(g => (
+                        <label
+                          key={g.id}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition ${
+                            selectedGroups.includes(g.id) ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-100 border border-transparent'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedGroups.includes(g.id)}
+                            onChange={() => toggleGroup(g.id)}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-gray-700">{g.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -209,7 +195,7 @@ export default function CreateSecretGroupModal({ userGroups, onClose, onSuccess 
             </button>
             <button
               type="submit"
-              disabled={loading || !name.trim() || !selectedGroupId}
+              disabled={loading || !name.trim()}
               className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Creating...' : 'Create Group'}
