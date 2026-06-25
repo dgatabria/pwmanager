@@ -135,7 +135,7 @@ UserDepInfo = Annotated[dict, Depends(get_current_user_info)]
 
 @router.post("/login")
 @_auth_limiter.limit(settings.RATE_LIMIT)
-async def login(req: Request, request: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(request: Request, login_data: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT token.
 
     The JWT is set as an httpOnly, Secure cookie (for production HTTPS)
@@ -150,11 +150,11 @@ async def login(req: Request, request: LoginRequest, response: Response, db: Asy
     Returns password_change_required flag to indicate if the user must
     change their password on first login.
     """
-    result = await db.execute(select(User).where(User.username == request.username))
+    result = await db.execute(select(User).where(User.username == login_data.username))
     user = result.scalar_one_or_none()
 
     # Check if user exists and verify password
-    if not user or not SecurityUtils.verify_password(request.password, user.hashed_password):
+    if not user or not SecurityUtils.verify_password(login_data.password, user.hashed_password):
         # Increment failed attempts (even if user doesn't exist — prevents user enumeration)
         if user:
             user.failed_login_attempts += 1
