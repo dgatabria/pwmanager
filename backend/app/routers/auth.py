@@ -305,8 +305,8 @@ async def login(request: Request, login_data: LoginRequest, response: Response, 
 @router.post("/change-password")
 @_auth_limiter.limit(settings.RATE_LIMIT)
 async def change_password(
-    req: Request,
-    request: ResetPasswordRequest,
+    request: Request,
+    password_data: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
     user_id: int = Depends(get_current_user),
 ):
@@ -316,7 +316,7 @@ async def change_password(
     the password_change_required flag so the user is not prompted again.
     """
     # Validate password strength
-    is_valid, error_msg = SecurityUtils.validate_password_strength(request.new_password)
+    is_valid, error_msg = SecurityUtils.validate_password_strength(password_data.new_password)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_msg)
 
@@ -326,7 +326,7 @@ async def change_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user.hashed_password = SecurityUtils.hash_password(request.new_password)
+    user.hashed_password = SecurityUtils.hash_password(password_data.new_password)
     user.password_change_required = False
     # Invalidate all existing sessions
     user.token_version += 1
