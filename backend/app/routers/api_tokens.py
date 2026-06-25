@@ -120,6 +120,7 @@ async def list_tokens(
 @router.post("/generate", response_model=APITokenCreateResponse, status_code=201)
 @_token_limiter.limit("60/minute")
 async def generate_token(
+    request: Request,
     token_data: APITokenCreate,
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
