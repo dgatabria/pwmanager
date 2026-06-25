@@ -1,6 +1,5 @@
 """FastAPI application for the Password Manager."""
 
-import inspect
 import secrets as secrets_module
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -10,38 +9,10 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 
-# ─── Monkey-patch slowapi to preserve function signatures ───────────
-# slowapi uses functools.wraps but inspect.signature() still sees
-# the wrapper's (*args, **kwargs) signature. FastAPI uses
-# inspect.signature() to determine endpoint parameters, so it
-# interprets *args/**kwargs as query params "args" and "kwargs",
-# causing 422 errors. This patch preserves the original signature.
-# MUST be applied BEFORE importing routers (which apply the decorator).
-import slowapi.extension
-_original_limit = slowapi.extension.Limiter.limit
-
-
-def _patched_limit(self, limit_value, key_func=None, per_method=False,
-                   methods=None, error_message=None, cost=1,
-                   override_defaults=True):
-    decorator = _original_limit(self, limit_value, key_func, per_method,
-                                methods, error_message, cost,
-                                override_defaults)
-    def patched_decorator(func):
-        wrapped = decorator(func)
-        # Preserve the original function signature for FastAPI
-        if hasattr(wrapped, '__wrapped__'):
-            wrapped.__signature__ = inspect.signature(func)
-        return wrapped
-    return patched_decorator
-
-
-slowapi.extension.Limiter.limit = _patched_limit
-
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
-# Import routers AFTER monkey-patch is applied
+# Import routers
 from app.routers.admin import router as admin_router
 from app.routers.api_tokens import router as api_tokens_router
 from app.routers.auth import router as auth_router

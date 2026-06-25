@@ -10,6 +10,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY ./app ./app
 COPY ./seed.py .
 
+# Patch slowapi to preserve function signatures for FastAPI compatibility
+# slowapi uses functools.wraps but inspect.signature() sees the wrapper's
+# (*args, **kwargs) signature. FastAPI uses inspect.signature() to determine
+# endpoint parameters. This patch preserves the original signature.
+COPY patch_slowapi.py /tmp/patch_slowapi.py
+RUN python /tmp/patch_slowapi.py
+
 # Expose port
 EXPOSE 8000
 
