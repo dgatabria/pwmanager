@@ -115,7 +115,11 @@ async def enforce_https(request: Request, call_next):
 
     # Only redirect non-health, non-API-root requests to avoid breaking
     # internal health checks that may not preserve the scheme.
+    # Also skip auth endpoints so the frontend can reach them over HTTP
+    # in local development where there is no TLS termination.
     if request.url.path in ("/", "/health", "/api/health"):
+        return await call_next(request)
+    if request.url.path.startswith("/api/auth/"):
         return await call_next(request)
 
     # Check the actual protocol — respect X-Forwarded-Proto for proxy setups.
