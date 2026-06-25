@@ -24,7 +24,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - encryption_key:/app/app/keys
+      - encryption_key:/app/app/utils/keys
 
   frontend:
     build:
