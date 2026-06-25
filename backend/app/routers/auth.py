@@ -1,7 +1,7 @@
 """Authentication API endpoints."""
 
 import secrets as secrets_module
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
@@ -160,7 +160,6 @@ async def login(request: Request, login_data: LoginRequest, response: Response, 
         if user:
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
-                from datetime import timedelta
                 user.locked_until = datetime.now(timezone.utc) + timedelta(
                     minutes=settings.LOCKOUT_DURATION_MINUTES
                 )
