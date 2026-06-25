@@ -65,25 +65,29 @@ async def get_current_user(
 
     try:
         payload = AuthService.decode_token(token)
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-        # Validate token_version to prevent session fixation
-        token_version = payload.get("tv")
-        if token_version is not None:
-            result = await db.execute(
-                select(User).where(User.id == int(user_id))
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Validate token_version to prevent session fixation
+    token_version = payload.get("tv")
+    if token_version is not None:
+        result = await db.execute(
+            select(User).where(User.id == int(user_id))
+        )
+        user = result.scalar_one_or_none()
+        if not user or user.token_version != token_version:
+            raise HTTPException(
+                status_code=401, detail="Token has been revoked"
             )
-            user = result.scalar_one_or_none()
-            if not user or user.token_version != token_version:
-                raise HTTPException(
-                    status_code=401, detail="Token has been revoked"
-                )
 
-        # Check JTI against revoked_tokens to prevent replay of revoked tokens
-        jti = payload.get("jti")
-        if jti:
+    # Check JTI against revoked_tokens to prevent replay of revoked tokens
+    jti = payload.get("jti")
+    if jti:
+        try:
             result = await db.execute(
                 text(
                     "SELECT 1 FROM revoked_tokens WHERE jti = :jti "
@@ -94,10 +98,11 @@ async def get_current_user(
                 raise HTTPException(
                     status_code=401, detail="Token has been revoked"
                 )
+        except Exception:
+            # Table may not exist — skip revocation check
+            pass
 
-        return int(user_id)
-    except (ValueError, Exception):
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return int(user_id)
 
 
 def _extract_token(request: Request, authorization: str | None) -> str | None:
@@ -129,25 +134,29 @@ async def get_current_user_info(
 
     try:
         payload = AuthService.decode_token(token)
-        user_id = payload.get("sub")
-        if user_id is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-        # Validate token_version to prevent session fixation
-        token_version = payload.get("tv")
-        if token_version is not None:
-            result = await db.execute(
-                select(User).where(User.id == int(user_id))
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Validate token_version to prevent session fixation
+    token_version = payload.get("tv")
+    if token_version is not None:
+        result = await db.execute(
+            select(User).where(User.id == int(user_id))
+        )
+        user = result.scalar_one_or_none()
+        if not user or user.token_version != token_version:
+            raise HTTPException(
+                status_code=401, detail="Token has been revoked"
             )
-            user = result.scalar_one_or_none()
-            if not user or user.token_version != token_version:
-                raise HTTPException(
-                    status_code=401, detail="Token has been revoked"
-                )
 
-        # Check JTI against revoked_tokens to prevent replay of revoked tokens
-        jti = payload.get("jti")
-        if jti:
+    # Check JTI against revoked_tokens to prevent replay of revoked tokens
+    jti = payload.get("jti")
+    if jti:
+        try:
             result = await db.execute(
                 text(
                     "SELECT 1 FROM revoked_tokens WHERE jti = :jti "
@@ -158,10 +167,11 @@ async def get_current_user_info(
                 raise HTTPException(
                     status_code=401, detail="Token has been revoked"
                 )
+        except Exception:
+            # Table may not exist — skip revocation check
+            pass
 
-        user_id = int(user_id)
-    except (ValueError, Exception):
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    user_id = int(user_id)
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
