@@ -27,7 +27,7 @@ export default function AdminUserManagement() {
     try {
       const [usersData, groupsData] = await Promise.all([
         api.get<User[]>(`/api/admin/users${search ? `?search=${search}` : ''}`),
-        api.get<Group[]>('/api/admin/groups'),
+        api.get<Group[]>('/admin/groups'),
       ])
       setUsers(usersData)
       setGroups(groupsData)
@@ -48,7 +48,7 @@ export default function AdminUserManagement() {
       return
     }
     try {
-      await api.post('/api/admin/users', newUser)
+      await api.post('/admin/users', newUser)
       setShowCreateModal(false)
       setNewUser({
         username: '',

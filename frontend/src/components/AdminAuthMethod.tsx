@@ -46,8 +46,8 @@ export default function AdminAuthMethod() {
     setSuccess('')
     try {
       const [authData, samlData] = await Promise.all([
-        api.get<AuthMethodConfig>('/api/admin/auth/method'),
-        api.get<SAMLConfig>('/api/admin/auth/saml?show_secrets=true'),
+        api.get<AuthMethodConfig>('/admin/auth/method'),
+        api.get<SAMLConfig>('/admin/auth/saml?show_secrets=true'),
       ])
       setAuthMethod(authData.auth_method as 'local' | 'saml')
       setSamlConfig(samlData)
@@ -67,7 +67,7 @@ export default function AdminAuthMethod() {
     setError('')
     setSuccess('')
     try {
-      await api.put<AuthMethodConfig>('/api/admin/auth/method', {
+      await api.put<AuthMethodConfig>('/admin/auth/method', {
         auth_method: method,
       })
       setAuthMethod(method)
@@ -84,7 +84,7 @@ export default function AdminAuthMethod() {
     setError('')
     setSuccess('')
     try {
-      await api.put<SAMLConfig>('/api/admin/auth/saml', samlConfig)
+      await api.put<SAMLConfig>('/admin/auth/saml', samlConfig)
       setSuccess('SAML configuration saved successfully')
     } catch (err: any) {
       setError(err.message || 'Failed to save SAML configuration')
