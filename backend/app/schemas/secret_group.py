@@ -27,7 +27,7 @@ class SecretGroupResponse(BaseModel):
     name: str
     description: str | None
     parent_id: int | None
-    group_id: int
+    group_id: int | None
     owner_id: int
     is_active: bool
 
