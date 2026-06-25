@@ -97,7 +97,10 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     # X-XSS-Protection removed: deprecated and can introduce XSS vulnerabilities
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+    # HSTS only when HTTPS is enforced — otherwise it breaks local HTTP development
+    # because the browser forces HTTPS for all future requests but there is no HTTPS server.
+    if settings.HTTPS_ENFORCE:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
     response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
