@@ -135,7 +135,7 @@ UserDepInfo = Annotated[dict, Depends(get_current_user_info)]
 
 @router.post("/login")
 @_auth_limiter.limit(settings.RATE_LIMIT)
-async def login(request: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(req: Request, request: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT token.
 
     The JWT is set as an httpOnly, Secure cookie (for production HTTPS)
@@ -246,6 +246,7 @@ async def login(request: LoginRequest, response: Response, db: AsyncSession = De
 @router.post("/change-password")
 @_auth_limiter.limit(settings.RATE_LIMIT)
 async def change_password(
+    req: Request,
     request: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
     user_id: int = Depends(get_current_user),
@@ -277,7 +278,7 @@ async def change_password(
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 @_auth_limiter.limit("10/hour")
-async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register(request: Request, user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """Register a new user.
     
     Rate limited to prevent abuse. Username and email uniqueness enforced.
