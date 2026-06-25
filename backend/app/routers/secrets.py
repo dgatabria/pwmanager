@@ -149,6 +149,7 @@ async def check_secret_group_access(
 @router.get("")
 @_secret_limiter.limit("60/minute")
 async def list_secrets(
+    request: Request,
     user_info: UserDep,
     db: AsyncSession = Depends(get_db),
     group_id: int | None = Query(None),
