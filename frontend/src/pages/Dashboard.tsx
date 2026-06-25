@@ -13,7 +13,7 @@ import UserManagement from '../components/UserManagement'
 import CreateSecretGroupModal from '../components/CreateSecretGroupModal'
 
 export default function Dashboard() {
-  const { logout, user } = useAuth()
+  const { logout } = useAuth()
   const navigate = useNavigate()
 
   // State
