@@ -14,8 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
+from app.models.group import Group
+from app.models.user_group import UserGroup
 from app.services.maintenance import is_maintenance_mode
 from app.schemas.auth import LoginRequest, Token, UserCreate, UserResponse, ResetPasswordRequest
+from app.schemas.group import GroupResponse
 from app.services.auth import AuthService
 from app.utils.security import SecurityUtils
 
@@ -401,6 +404,31 @@ async def get_me(
         is_superuser=user.is_superuser,
         created_at=str(user.created_at),
     )
+
+
+@router.get("/user-groups", response_model=list[GroupResponse])
+async def get_user_groups(
+    user_id: int = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the groups the current user belongs to (requires auth)."""
+    result = await db.execute(
+        select(Group).where(
+            Group.id.in_(
+                select(UserGroup.group_id).where(UserGroup.user_id == user_id)
+            )
+        ).order_by(Group.name)
+    )
+    groups = result.scalars().all()
+    return [
+        GroupResponse(
+            id=g.id,
+            name=g.name,
+            description=g.description,
+            is_active=g.is_active,
+        )
+        for g in groups
+    ]
 
 
 @router.post("/logout")

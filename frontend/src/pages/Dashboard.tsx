@@ -35,13 +35,13 @@ export default function Dashboard() {
     setLoading(true)
     setError('')
     try {
-      const [secretsData, groupsData, secretGroupsData] = await Promise.all([
+      const [secretsData, userGroupsData, secretGroupsData] = await Promise.all([
         api.get<Secret[]>('/api/secrets' + (selectedGroupId ? `?group_id=${selectedGroupId}` : '')),
-        api.get<Group[]>('/api/groups'),
+        api.get<Group[]>('/api/auth/user-groups'),
         api.get<SecretGroup[]>('/api/secret-groups'),
       ])
       setSecrets(secretsData)
-      setGroups(groupsData)
+      setGroups(userGroupsData)
       setSecretGroups(secretGroupsData)
     } catch (err: any) {
       setError(err.message || 'Failed to load data')
