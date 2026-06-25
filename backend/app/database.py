@@ -46,7 +46,8 @@ async def init_db():
     from app.models.api_token import APIToken
     from app.models.saml_config import SAMLConfig
 
-    await engine.create_all()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     # Run pending migrations
     from app.migrations import run_migrations
