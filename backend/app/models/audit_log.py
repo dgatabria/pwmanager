@@ -16,7 +16,7 @@ class AuditLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=True)
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    secret_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    secret_id: Mapped[int | None] = mapped_column(ForeignKey("secrets.id"), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
