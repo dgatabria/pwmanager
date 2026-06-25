@@ -28,7 +28,7 @@ from app.schemas.secret import (
 from app.services.encryption import EncryptionService
 from app.services.audit import AuditService
 from app.utils.security import SecurityUtils
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user, get_current_user_info
 
 router = APIRouter(prefix="/api/secrets", tags=["Secrets"])
 
@@ -36,7 +36,7 @@ router = APIRouter(prefix="/api/secrets", tags=["Secrets"])
 _secret_limiter = Limiter(key_func=get_remote_address)
 
 
-UserDep = Annotated[dict, Depends(get_current_user)]
+UserDep = Annotated[dict, Depends(get_current_user_info)]
 
 
 async def check_secret_access(
