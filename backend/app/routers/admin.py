@@ -1028,6 +1028,7 @@ async def admin_rotation_status(
 @router.get("/backup/status", response_model=BackupStatusResponse)
 @_admin_limiter.limit("10/minute")
 async def get_backup_status(
+    request: Request,
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
@@ -1041,6 +1042,7 @@ async def get_backup_status(
 @router.get("/backup/list", response_model=BackupListResponse)
 @_admin_limiter.limit("10/minute")
 async def list_backups(
+    request: Request,
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
@@ -1054,6 +1056,7 @@ async def list_backups(
 @router.post("/backup/execute", response_model=BackupExecuteResponse)
 @_admin_limiter.limit("5/minute")
 async def execute_backup(
+    request: Request,
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
@@ -1067,6 +1070,7 @@ async def execute_backup(
 @router.post("/backup/{backup_id}/restore", response_model=BackupRestoreResponse)
 @_admin_limiter.limit("5/minute")
 async def restore_backup(
+    request: Request,
     backup_id: str,
     current_user_id: UserDep,
     db: AsyncSession = Depends(get_db),
