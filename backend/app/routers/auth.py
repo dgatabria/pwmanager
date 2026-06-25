@@ -100,8 +100,18 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
+def _extract_token(request: Request, authorization: str | None) -> str | None:
+    """Extract JWT token from Authorization header or cookie."""
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+    if not token and request.cookies:
+        token = request.cookies.get(JWT_COOKIE_NAME)
+    return token
+
+
 async def get_current_user_info(
-    request = Depends(),
+    request: Request = Depends(),
     authorization: Annotated[str | None, Header()] = None,
     db: AsyncSession = Depends(get_db),
 ):
@@ -113,7 +123,45 @@ async def get_current_user_info(
     Returns user dict with id, username, email, is_superuser.
     Centralized auth function - used by all routers.
     """
-    user_id = await get_current_user(request=request, authorization=authorization)
+    token = _extract_token(request, authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        payload = AuthService.decode_token(token)
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Validate token_version to prevent session fixation
+        token_version = payload.get("tv")
+        if token_version is not None:
+            result = await db.execute(
+                select(User).where(User.id == int(user_id))
+            )
+            user = result.scalar_one_or_none()
+            if not user or user.token_version != token_version:
+                raise HTTPException(
+                    status_code=401, detail="Token has been revoked"
+                )
+
+        # Check JTI against revoked_tokens to prevent replay of revoked tokens
+        jti = payload.get("jti")
+        if jti:
+            result = await db.execute(
+                text(
+                    "SELECT 1 FROM revoked_tokens WHERE jti = :jti "
+                    "AND expires_at > NOW()"
+                ).bindparams(jti=jti)
+            )
+            if result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=401, detail="Token has been revoked"
+                )
+
+        user_id = int(user_id)
+    except (ValueError, Exception):
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
