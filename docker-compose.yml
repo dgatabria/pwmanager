@@ -25,6 +25,9 @@ services:
         condition: service_healthy
     volumes:
       - encryption_key:/app/app/utils/keys
+      - backups:/app/app/backups
+    environment:
+      - BACKUP_DIR=/app/app/backups
 
   frontend:
     build:
@@ -37,3 +40,4 @@ services:
 volumes:
   pgdata:
   encryption_key:
+  backups:
