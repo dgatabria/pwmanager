@@ -26,6 +26,11 @@ interface RotationResult {
   timestamp?: string
 }
 
+interface BackupListResponse {
+  backups: any[]
+  message: string
+}
+
 export default function AdminBackupRecovery() {
   const [status, setStatus] = useState<BackupStatus | null>(null)
   const [backups, setBackups] = useState<any[]>([])
@@ -47,10 +52,10 @@ export default function AdminBackupRecovery() {
     try {
       const [statusData, backupsData] = await Promise.all([
         api.get<BackupStatus>('/admin/backup/status'),
-        api.get<any[]>('/admin/backup/list'),
+        api.get<BackupListResponse>('/admin/backup/list'),
       ])
       setStatus(statusData)
-      setBackups(backupsData)
+      setBackups(backupsData.backups || [])
     } catch (err: any) {
       setError(err.message || 'Failed to load backup status')
     } finally {
