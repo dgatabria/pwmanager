@@ -42,7 +42,7 @@ const api = {
       headers['X-CSRF-Token'] = csrfToken
     }
 
-    const response = await fetch(`/api${endpoint}`, {
+    const response = await fetch(`${endpoint}`, {
       ...options,
       credentials: 'include', // Send httpOnly cookies
       headers,
