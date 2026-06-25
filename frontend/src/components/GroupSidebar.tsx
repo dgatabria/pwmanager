@@ -3,8 +3,8 @@ import type { SecretGroup, Group } from '../types'
 interface Props {
   groups: SecretGroup[]
   userGroups: Group[]
-  selectedGroupId: number | null
-  onSelectGroup: (id: number | null) => void
+  selectedGroupId: 'personal' | number | null
+  onSelectGroup: (id: 'personal' | number | null) => void
   onAddGroup: () => void
   onDeleteGroup?: (id: number) => void
 }
@@ -26,17 +26,17 @@ export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSe
         </button>
       </div>
 
-      {/* All Secrets */}
+      {/* Personal Secrets */}
       <div className="p-2">
         <button
-          onClick={() => onSelectGroup(null)}
+          onClick={() => onSelectGroup('personal')}
           className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition ${
-            selectedGroupId === null
+            selectedGroupId === 'personal'
               ? 'bg-blue-50 text-blue-700'
               : 'text-gray-700 hover:bg-gray-100'
           }`}
         >
-          All Secrets
+          Personal Secrets
         </button>
       </div>
 

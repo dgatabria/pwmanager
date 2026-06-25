@@ -10,7 +10,7 @@ export interface Secret {
   key_length: number | null
   username: string | null
   url: string | null
-  group_id: number
+  group_id: number | null
   owner_id: number
   is_active: boolean
   created_at: string

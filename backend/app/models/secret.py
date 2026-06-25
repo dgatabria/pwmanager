@@ -43,7 +43,7 @@ class Secret(Base):
     key_length: Mapped[int | None] = mapped_column(Integer, nullable=True)  # For SSH keys
     username: Mapped[str | None] = mapped_column(String(200), nullable=True)  # For credentials
     url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    group_id: Mapped[int] = mapped_column(ForeignKey("secret_groups.id"), nullable=False)
+    group_id: Mapped[int | None] = mapped_column(ForeignKey("secret_groups.id"), nullable=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(

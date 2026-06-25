@@ -155,6 +155,7 @@ async def list_secrets(
     group_id: int | None = Query(None),
     search: str | None = Query(None),
     secret_type: str | None = Query(None),
+    view_mode: str | None = Query(None, description="personal|group|all. 'personal' returns only secrets with no group or in non-shared groups owned by the user."),
 ):
     """List secrets accessible to the current user.
 
@@ -215,6 +216,24 @@ async def list_secrets(
         .where(Secret.id.in_(accessible_secret_ids))
         .order_by(Secret.updated_at.desc())
     )
+
+    if view_mode == "personal":
+        # Personal secrets: owned by user AND (no group OR group has no shared members)
+        personal_query = (
+            select(Secret.id)
+            .where(
+                Secret.is_active == True,
+                Secret.owner_id == user_id,
+                or_(
+                    Secret.group_id.is_(None),
+                    Secret.group_id.not_in(
+                        select(SecretGroupMember.secret_group_id)
+                        .distinct()
+                    ),
+                ),
+            )
+        )
+        query = query.where(Secret.id.in_(personal_query))
 
     if group_id:
         query = query.where(Secret.group_id == group_id)
@@ -314,8 +333,9 @@ async def create_secret(
     """
     user_id = user_info["id"]
 
-    # Verify user has write access to the target secret group
-    await check_secret_group_access(secret_data.group_id, user_id, db, permission="write")
+    # Verify user has write access to the target secret group (skip if personal)
+    if secret_data.group_id is not None:
+        await check_secret_group_access(secret_data.group_id, user_id, db, permission="write")
 
     # Encrypt plaintext_data server-side before persisting
     encrypted = EncryptionService.encrypt(secret_data.plaintext_data)

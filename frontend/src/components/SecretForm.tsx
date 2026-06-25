@@ -24,7 +24,7 @@ export default function SecretForm({ initialData, secretGroups, onSubmit, onCanc
   const [keyLength, setKeyLength] = useState(initialData?.key_length || 4096)
   const [username, setUsername] = useState(initialData?.username || '')
   const [url, setUrl] = useState(initialData?.url || '')
-  const [groupId, setGroupId] = useState(initialData?.group_id || (secretGroups[0]?.id || 1))
+  const [groupId, setGroupId] = useState<number | null>(initialData?.group_id ?? null)
   const [error, setError] = useState('')
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -91,12 +91,13 @@ export default function SecretForm({ initialData, secretGroups, onSubmit, onCanc
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Group *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
           <select
-            value={groupId}
-            onChange={(e) => setGroupId(Number(e.target.value))}
+            value={groupId ?? ''}
+            onChange={(e) => setGroupId(e.target.value === '' ? null : Number(e.target.value))}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
           >
+            <option value="" disabled>None (personal)</option>
             {secretGroups.map((g) => (
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}

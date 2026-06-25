@@ -13,7 +13,7 @@ class SecretCreate(BaseModel):
     key_length: int | None = None
     username: str | None = None
     url: str | None = None
-    group_id: int
+    group_id: int | None = None
 
 
 class SecretUpdate(BaseModel):
@@ -37,7 +37,7 @@ class SecretResponse(BaseModel):
     key_length: int | None
     username: str | None
     url: str | None
-    group_id: int
+    group_id: int | None
     is_active: bool
     created_at: str
     updated_at: str
