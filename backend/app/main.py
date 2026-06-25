@@ -1,5 +1,6 @@
 """FastAPI application for the Password Manager."""
 
+import inspect
 import secrets as secrets_module
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -18,6 +19,34 @@ from app.services.maintenance import set_maintenance_mode, is_maintenance_mode
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
+
+
+# ─── Monkey-patch slowapi to preserve function signatures ───────────
+# slowapi uses functools.wraps but inspect.signature() still sees
+# the wrapper's (*args, **kwargs) signature. FastAPI uses
+# inspect.signature() to determine endpoint parameters, so it
+# interprets *args/**kwargs as query params "args" and "kwargs",
+# causing 422 errors. This patch preserves the original signature.
+import slowapi.extension
+_original_limit = slowapi.extension.Limiter.limit
+
+
+def _patched_limit(self, limit_value, key_func=None, per_method=False,
+                   methods=None, error_message=None, cost=1,
+                   override_defaults=True):
+    decorator = _original_limit(self, limit_value, key_func, per_method,
+                                methods, error_message, cost,
+                                override_defaults)
+    def patched_decorator(func):
+        wrapped = decorator(func)
+        # Preserve the original function signature for FastAPI
+        if hasattr(wrapped, '__wrapped__'):
+            wrapped.__signature__ = inspect.signature(func)
+        return wrapped
+    return patched_decorator
+
+
+slowapi.extension.Limiter.limit = _patched_limit
 
 app = FastAPI(
     title="Password Manager API",
