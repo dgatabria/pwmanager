@@ -226,48 +226,62 @@ class BackupService:
 
     @classmethod
     async def _export_database_sqlalchemy(cls, output_path: Path) -> None:
-        """Export database using SQLAlchemy (fallback method)."""
-        from app.database import async_session
+        """Export database using SQLAlchemy (fallback method).
+
+        Only exports tables that have SQLAlchemy models to avoid
+        'column not found' errors on system/legacy tables.
+        """
+        from app.database import Base, async_session
         from sqlalchemy import text
 
+        # Only export tables that have SQLAlchemy models defined
+        tables_to_export = list(Base.metadata.tables.keys())
+
         async with async_session() as session:
-            # Get all table names
-            result = await session.execute(text(
+            # Verify tables actually exist in the database
+            existing_tables = await session.execute(text(
                 "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
             ))
-            tables = [row[0] for row in result.all()]
+            existing_table_names = {row[0] for row in existing_tables.all()}
+
+            tables_to_export = [
+                t for t in tables_to_export if t in existing_table_names
+            ]
 
             with open(output_path, "w") as f:
                 f.write("-- Password Manager Database Backup\n")
                 f.write(f"-- Generated at: {datetime.now(timezone.utc).isoformat()}\n\n")
 
-                for table in tables:
-                    # Export table data
-                    result = await session.execute(text(f"SELECT * FROM {table}"))
-                    rows = result.all()
+                for table in tables_to_export:
+                    try:
+                        # Export table data
+                        result = await session.execute(text(f"SELECT * FROM {table}"))
+                        rows = result.all()
 
-                    if rows:
-                        # Get column names
-                        col_names = list(rows[0].keys())
-                        f.write(f"-- Table: {table}\n")
+                        if rows:
+                            # Get column names
+                            col_names = list(rows[0].keys())
+                            f.write(f"-- Table: {table}\n")
 
-                        for row in rows:
-                            values = []
-                            for col in col_names:
-                                val = row[col]
-                                if val is None:
-                                    values.append("NULL")
-                                elif isinstance(val, str):
-                                    # Escape single quotes
-                                    escaped = val.replace("'", "''")
-                                    values.append(f"'{escaped}'")
-                                elif isinstance(val, datetime):
-                                    values.append(f"'{val.isoformat()}'")
-                                else:
-                                    values.append(str(val))
+                            for row in rows:
+                                values = []
+                                for col in col_names:
+                                    val = row[col]
+                                    if val is None:
+                                        values.append("NULL")
+                                    elif isinstance(val, str):
+                                        # Escape single quotes
+                                        escaped = val.replace("'", "''")
+                                        values.append(f"'{escaped}'")
+                                    elif isinstance(val, datetime):
+                                        values.append(f"'{val.isoformat()}'")
+                                    else:
+                                        values.append(str(val))
 
-                            f.write(f"INSERT INTO {table} ({', '.join(col_names)}) VALUES ({', '.join(values)});\n")
-                        f.write("\n")
+                                f.write(f"INSERT INTO {table} ({', '.join(col_names)}) VALUES ({', '.join(values)});\n")
+                            f.write("\n")
+                    except Exception as e:
+                        f.write(f"-- ERROR exporting table '{table}': {e}\n\n")
 
     @classmethod
     async def restore_backup(cls, backup_id: str) -> dict:
