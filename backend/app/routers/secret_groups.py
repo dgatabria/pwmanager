@@ -116,8 +116,17 @@ async def create_secret_group(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new secret group. The creator becomes the owner."""
-    # Validate member_group_ids exist and user belongs to them
+    """Create a new secret group. The creator becomes the owner.
+
+    Authorization: the user may only share with groups they belong to.
+    """
+    # Get the user's own group memberships
+    result = await db.execute(
+        select(UserGroup.group_id).where(UserGroup.user_id == current_user_id)
+    )
+    user_group_ids = {row[0] for row in result.all()}
+
+    # Validate member_group_ids: must exist, be active, AND belong to the user
     if group_data.member_group_ids:
         result = await db.execute(
             select(Group.id).where(
@@ -125,12 +134,21 @@ async def create_secret_group(
                 Group.is_active == True,
             )
         )
-        valid_group_ids = {row[0] for row in result.all()}
-        invalid = set(group_data.member_group_ids) - valid_group_ids
-        if invalid:
+        existing_group_ids = {row[0] for row in result.all()}
+        # Groups that don't exist or are inactive
+        non_existent = set(group_data.member_group_ids) - existing_group_ids
+        # Groups the user doesn't belong to
+        not_member = set(group_data.member_group_ids) - user_group_ids
+        if non_existent or not_member:
+            bad = sorted(non_existent | not_member)
+            reason = []
+            if non_existent:
+                reason.append("non-existent or inactive")
+            if not_member:
+                reason.append("you are not a member of")
             raise HTTPException(
-                status_code=400,
-                detail=f"Cannot share with non-existent or inactive groups: {sorted(invalid)}",
+                status_code=403,
+                detail=f"Cannot share with groups: {', '.join(str(g) for g in bad)} ({'; '.join(reason)})"
             )
 
     sg = SecretGroup(
@@ -260,7 +278,10 @@ async def update_secret_group(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a secret group (owner only)."""
+    """Update a secret group (owner only).
+
+    Authorization: the owner may only share with groups they belong to.
+    """
     sg = await _require_owner(group_id, current_user_id, db)
 
     changes: list[str] = []
@@ -276,19 +297,32 @@ async def update_secret_group(
 
     # Update member access if provided
     if group_data.member_group_ids is not None:
-        # Validate group IDs
+        # Get the owner's own group memberships
+        result = await db.execute(
+            select(UserGroup.group_id).where(UserGroup.user_id == current_user_id)
+        )
+        owner_group_ids = {row[0] for row in result.all()}
+
+        # Validate: must exist, be active, AND belong to the owner
         result = await db.execute(
             select(Group.id).where(
                 Group.id.in_(group_data.member_group_ids),
                 Group.is_active == True,
             )
         )
-        valid_group_ids = {row[0] for row in result.all()}
-        invalid = set(group_data.member_group_ids) - valid_group_ids
-        if invalid:
+        existing_group_ids = {row[0] for row in result.all()}
+        non_existent = set(group_data.member_group_ids) - existing_group_ids
+        not_member = set(group_data.member_group_ids) - owner_group_ids
+        if non_existent or not_member:
+            bad = sorted(non_existent | not_member)
+            reason = []
+            if non_existent:
+                reason.append("non-existent or inactive")
+            if not_member:
+                reason.append("you are not a member of")
             raise HTTPException(
-                status_code=400,
-                detail=f"Cannot share with non-existent or inactive groups: {sorted(invalid)}",
+                status_code=403,
+                detail=f"Cannot share with groups: {', '.join(str(g) for g in bad)} ({'; '.join(reason)})"
             )
 
         # Remove existing memberships
@@ -365,22 +399,38 @@ async def update_group_access(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update which user groups can access this secret group (owner only)."""
+    """Update which user groups can access this secret group (owner only).
+
+    Authorization: the owner may only share with groups they belong to.
+    """
     sg = await _require_owner(group_id, current_user_id, db)
 
-    # Validate group IDs
+    # Get the owner's own group memberships
+    result = await db.execute(
+        select(UserGroup.group_id).where(UserGroup.user_id == current_user_id)
+    )
+    owner_group_ids = {row[0] for row in result.all()}
+
+    # Validate: must exist, be active, AND belong to the owner
     result = await db.execute(
         select(Group.id).where(
             Group.id.in_(access_data.member_group_ids),
             Group.is_active == True,
         )
     )
-    valid_group_ids = {row[0] for row in result.all()}
-    invalid = set(access_data.member_group_ids) - valid_group_ids
-    if invalid:
+    existing_group_ids = {row[0] for row in result.all()}
+    non_existent = set(access_data.member_group_ids) - existing_group_ids
+    not_member = set(access_data.member_group_ids) - owner_group_ids
+    if non_existent or not_member:
+        bad = sorted(non_existent | not_member)
+        reason = []
+        if non_existent:
+            reason.append("non-existent or inactive")
+        if not_member:
+            reason.append("you are not a member of")
         raise HTTPException(
-            status_code=400,
-            detail=f"Cannot share with non-existent or inactive groups: {sorted(invalid)}",
+            status_code=403,
+            detail=f"Cannot share with groups: {', '.join(str(g) for g in bad)} ({'; '.join(reason)})"
         )
 
     # Remove existing memberships
@@ -420,10 +470,19 @@ async def add_group_to_secret_group(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Add a user group to a secret group (owner only)."""
+    """Add a user group to a secret group (owner only).
+
+    Authorization: the owner may only add groups they belong to.
+    """
     await _require_owner(group_id, current_user_id, db)
 
-    # Validate group exists and is active
+    # Get the owner's own group memberships
+    result = await db.execute(
+        select(UserGroup.group_id).where(UserGroup.user_id == current_user_id)
+    )
+    owner_group_ids = {row[0] for row in result.all()}
+
+    # Validate group exists, is active, AND owner belongs to it
     result = await db.execute(
         select(Group.id).where(Group.id == user_group_id, Group.is_active == True)
     )
@@ -431,6 +490,11 @@ async def add_group_to_secret_group(
         raise HTTPException(
             status_code=400,
             detail="Group does not exist or is inactive",
+        )
+    if user_group_id not in owner_group_ids:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not a member of this group",
         )
 
     result = await db.execute(
