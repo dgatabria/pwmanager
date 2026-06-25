@@ -9,17 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers.admin import router as admin_router
-from app.routers.api_tokens import router as api_tokens_router
-from app.routers.auth import router as auth_router
-from app.routers.groups import router as groups_router
-from app.routers.secret_groups import router as secret_groups_router
-from app.routers.secrets import router as secrets_router
-from app.services.maintenance import set_maintenance_mode, is_maintenance_mode
-
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
-
 
 # ─── Monkey-patch slowapi to preserve function signatures ───────────
 # slowapi uses functools.wraps but inspect.signature() still sees
@@ -27,6 +16,7 @@ limiter = Limiter(key_func=get_remote_address)
 # inspect.signature() to determine endpoint parameters, so it
 # interprets *args/**kwargs as query params "args" and "kwargs",
 # causing 422 errors. This patch preserves the original signature.
+# MUST be applied BEFORE importing routers (which apply the decorator).
 import slowapi.extension
 _original_limit = slowapi.extension.Limiter.limit
 
@@ -47,6 +37,18 @@ def _patched_limit(self, limit_value, key_func=None, per_method=False,
 
 
 slowapi.extension.Limiter.limit = _patched_limit
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
+# Import routers AFTER monkey-patch is applied
+from app.routers.admin import router as admin_router
+from app.routers.api_tokens import router as api_tokens_router
+from app.routers.auth import router as auth_router
+from app.routers.groups import router as groups_router
+from app.routers.secret_groups import router as secret_groups_router
+from app.routers.secrets import router as secrets_router
+from app.services.maintenance import set_maintenance_mode, is_maintenance_mode
 
 app = FastAPI(
     title="Password Manager API",

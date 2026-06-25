@@ -33,7 +33,7 @@ CSRF_TOKEN_COOKIE = "csrf_token"
 
 
 async def get_current_user(
-    request = Depends(),
+    request: Request,
     authorization: Annotated[str | None, Header()] = None,
     db: AsyncSession = Depends(get_db),
 ):
@@ -111,7 +111,7 @@ def _extract_token(request: Request, authorization: str | None) -> str | None:
 
 
 async def get_current_user_info(
-    request: Request = Depends(),
+    request: Request,
     authorization: Annotated[str | None, Header()] = None,
     db: AsyncSession = Depends(get_db),
 ):
@@ -395,7 +395,7 @@ async def get_me(
 @router.post("/logout")
 async def logout(
     response: Response,
-    request = Depends(),
+    request: Request,
     authorization: Annotated[str | None, Header()] = None,
     db: AsyncSession = Depends(get_db),
 ):
