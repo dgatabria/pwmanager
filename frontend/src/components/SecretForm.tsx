@@ -37,7 +37,7 @@ export default function SecretForm({ initialData, secretGroups, onSubmit, onCanc
       title: title.trim(),
       description: description.trim() || null,
       secret_type: secretType,
-      encrypted_data: encryptedData,
+      plaintext_data: encryptedData,
       key_length: secretType === 'ssh_key' ? keyLength : null,
       username: username.trim() || null,
       url: url.trim() || null,
