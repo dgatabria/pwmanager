@@ -1,6 +1,7 @@
 """Authentication API endpoints."""
 
 import secrets as secrets_module
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
