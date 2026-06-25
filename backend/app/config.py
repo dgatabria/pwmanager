@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     # Enforce HTTPS in production. When True, all HTTP requests are
     # redirected to HTTPS. Set to False for local development behind
     # a reverse proxy that terminates TLS.
-    HTTPS_ENFORCE: bool = True
+    HTTPS_ENFORCE: bool = False
 
     class Config:
         env_file = ".env"

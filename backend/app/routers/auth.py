@@ -274,11 +274,12 @@ async def login(request: Request, login_data: LoginRequest, response: Response, 
     await db.commit()
 
     # Set httpOnly cookie as an additional auth mechanism
+    # secure=True only when HTTPS is enforced (production)
     response.set_cookie(
         key=JWT_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=True,        # Only send over HTTPS in production
+        secure=settings.HTTPS_ENFORCE,  # Only send over HTTPS in production
         samesite="lax",     # CSRF protection
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         path="/",
