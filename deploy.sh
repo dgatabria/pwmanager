@@ -314,10 +314,41 @@ cmd_clean() {
     warn "⚠️  All encrypted data will become unrecoverable if you regenerate."
 }
 
+# ─── Command: update ────────────────────────────────────────────────
+# Pull latest code and rebuild all services (backend + frontend).
+# This is the standard deployment workflow for pushing changes to a
+# running server.
+cmd_update() {
+    log "Pulling latest changes from origin/main..."
+    git pull origin main || {
+        err "git pull failed. Make sure you are on the main branch and have a clean working tree."
+        exit 1
+    }
+
+    log "Rebuilding all containers (backend + frontend)..."
+    docker compose up --build -d
+
+    log "Waiting for services to start..."
+    sleep 5
+
+    log "Checking service health..."
+    if docker compose ps | grep -q "Unhealthy"; then
+        warn "One or more services are unhealthy. Check logs with:"
+        warn "  docker compose logs"
+    fi
+
+    log ""
+    log "═══════════════════════════════════════════════════════════"
+    log "  Update complete!"
+    log "  All containers rebuilt and restarted."
+    log "═══════════════════════════════════════════════════════════"
+}
+
 # ─── Main ───────────────────────────────────────────────────────────
 case "${1:-help}" in
     dev)      cmd_dev ;;
     prod)     cmd_prod ;;
+    update)   cmd_update ;;
     secrets)  cmd_secrets ;;
     seed)     cmd_seed ;;
     clean)    cmd_clean ;;
