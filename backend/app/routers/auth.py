@@ -14,7 +14,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.user import User
 from app.services.maintenance import is_maintenance_mode
-from app.schemas.auth import LoginRequest, Token, UserCreate, UserResponse
+from app.schemas.auth import LoginRequest, Token, UserCreate, UserResponse, ResetPasswordRequest
 from app.services.auth import AuthService
 from app.utils.security import SecurityUtils
 
