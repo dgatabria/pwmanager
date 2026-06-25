@@ -122,11 +122,11 @@ async def enforce_https(request: Request, call_next):
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     if scheme != "https":
         # Build the HTTPS URL preserving host, port, path and query.
-        url = request.url.copy_with(scheme="https")
+        url_str = str(request.url).replace("http://", "https://", 1)
         return JSONResponse(
             status_code=307,
             content={"detail": "Redirecting to HTTPS"},
-            headers={"Location": str(url)},
+            headers={"Location": url_str},
         )
 
     return await call_next(request)
