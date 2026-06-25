@@ -88,7 +88,7 @@ export default function AdminBackupRecovery() {
     setError('')
     setSuccess('')
     try {
-      const result = await api.post<BackupInfo>(`/api/admin/backup/${backupIdToRestore}/restore`, {})
+      const result = await api.post<BackupInfo>(`/admin/backup/${backupIdToRestore}/restore`, {})
       setSuccess(result.message || 'Restore executed successfully')
       setShowRestoreModal(false)
       setBackupIdToRestore('')
