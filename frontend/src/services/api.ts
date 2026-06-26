@@ -91,6 +91,23 @@ const api = {
     api.request<T>(`/api/secrets/${secretId}/reveal`, { method: 'GET' }),
   copySecret: <T>(secretId: number) =>
     api.request<T>(`/api/secrets/${secretId}/copy`, { method: 'POST' }),
+
+  // Admin audit logs
+  getAuditLogs: <T>(params: {
+    event_type?: string
+    user_id?: number
+    secret_id?: number
+    page?: number
+    page_size?: number
+  }) => {
+    const qs = new URLSearchParams()
+    if (params.event_type) qs.set('event_type', params.event_type)
+    if (params.user_id) qs.set('user_id', String(params.user_id))
+    if (params.secret_id) qs.set('secret_id', String(params.secret_id))
+    if (params.page) qs.set('page', String(params.page))
+    if (params.page_size) qs.set('page_size', String(params.page_size))
+    return api.request<T>(`/api/admin/audit-logs${qs.toString() ? '?' + qs.toString() : ''}`, { method: 'GET' })
+  },
 }
 
 export default api

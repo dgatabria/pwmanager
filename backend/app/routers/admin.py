@@ -15,6 +15,7 @@ from app.models.group import Group
 from app.models.user_group import UserGroup
 from app.models.saml_config import SAMLConfig
 from app.models.secret import Secret
+from app.models.audit_log import AuditLog
 from app.services.maintenance import set_maintenance_mode, is_maintenance_mode
 from app.schemas.auth import (
     UserResponse,
@@ -34,6 +35,7 @@ from app.schemas.backup import (
     BackupRestoreResponse,
 )
 from app.schemas.group import GroupCreate, GroupResponse, GroupUpdate
+from app.schemas.audit import AuditLogResponse, AuditLogListResponse
 from app.services.encryption import EncryptionService
 from app.services.audit import AuditService
 from app.services.backup import BackupService
@@ -924,6 +926,75 @@ async def admin_rotation_status(
         "maintenance_mode": in_maintenance,
         "message": "System is in maintenance mode" if in_maintenance else "System is operational",
     }
+
+
+# ─── Audit Logs Endpoints ────────────────────────────────────────────
+
+@router.get("/audit-logs", response_model=AuditLogListResponse)
+@_admin_limiter.limit("30/minute")
+async def admin_get_audit_logs(
+    request: Request,
+    current_user_id: UserDep,
+    db: AsyncSession = Depends(get_db),
+    event_type: str | None = Query(None, description="Filter by event type (e.g. secret_reveal, secret_copy, user_create)"),
+    user_id: int | None = Query(None, description="Filter by user ID"),
+    secret_id: int | None = Query(None, description="Filter by secret ID"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=200, description="Items per page"),
+):
+    """Get all audit logs with filtering and pagination (superuser only).
+
+    Rate limited to 30 requests per minute.
+    """
+    await require_superuser(current_user_id, db)
+
+    base_query = select(AuditLog).order_by(AuditLog.timestamp.desc())
+
+    if event_type:
+        base_query = base_query.where(AuditLog.event_type == event_type)
+    if user_id is not None:
+        base_query = base_query.where(AuditLog.user_id == user_id)
+    if secret_id is not None:
+        base_query = base_query.where(AuditLog.secret_id == secret_id)
+
+    # Count total matching records
+    count_query = select(func.count()).select_from(base_query.subquery())
+    count_result = await db.execute(count_query)
+    total = count_result.scalar()
+
+    # Apply pagination
+    offset = (page - 1) * page_size
+    paged_query = base_query.offset(offset).limit(page_size)
+    result = await db.execute(paged_query)
+    logs = result.scalars().all()
+
+    # Load relationships for each log
+    for log in logs:
+        await db.refresh(log, ["user", "secret"])
+
+    total_pages = max(1, (total + page_size - 1) // page_size)
+
+    return AuditLogListResponse(
+        logs=[
+            AuditLogResponse(
+                id=log.id,
+                user_id=log.user_id,
+                user_username=log.user.username if log.user else None,
+                event_type=log.event_type,
+                secret_id=log.secret_id,
+                secret_title=log.secret.title if log.secret else None,
+                ip_address=log.ip_address,
+                user_agent=log.user_agent,
+                details=log.details,
+                timestamp=log.timestamp.isoformat() + "Z" if log.timestamp else None,
+            )
+            for log in logs
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
 
 
 # ─── Backup / Restore Endpoints ──────────────────────────────────────

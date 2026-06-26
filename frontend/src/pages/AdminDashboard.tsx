@@ -4,11 +4,12 @@ import { useNavigate } from 'react-router-dom'
 import UserManagement from '../components/AdminUserManagement'
 import BackupRecovery from '../components/AdminBackupRecovery'
 import AdminAuthMethod from '../components/AdminAuthMethod'
+import AuditLogs from '../components/AuditLogs'
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<'users' | 'maintenance' | 'auth'>('users')
+  const [activeTab, setActiveTab] = useState<'users' | 'maintenance' | 'auth' | 'audit'>('users')
 
   const handleLogout = () => {
     logout()
@@ -87,6 +88,19 @@ export default function AdminDashboard() {
                 Authentication
               </span>
             </button>
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={`px-4 py-2 rounded-lg font-medium transition ${
+                activeTab === 'audit' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                Audit Logs
+              </span>
+            </button>
           </div>
         </div>
 
@@ -95,6 +109,7 @@ export default function AdminDashboard() {
           {activeTab === 'users' && <UserManagement />}
           {activeTab === 'maintenance' && <BackupRecovery />}
           {activeTab === 'auth' && <AdminAuthMethod />}
+          {activeTab === 'audit' && <AuditLogs />}
         </div>
       </div>
     </div>

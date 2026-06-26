@@ -137,3 +137,24 @@ export interface TokenResponse {
   access_token: string
   token_type: string
 }
+
+export interface AuditLog {
+  id: number
+  user_id: number | null
+  user_username: string | null
+  event_type: string
+  secret_id: number | null
+  secret_title: string | null
+  ip_address: string | null
+  user_agent: string | null
+  details: string | null
+  timestamp: string | null
+}
+
+export interface AuditLogList {
+  logs: AuditLog[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
