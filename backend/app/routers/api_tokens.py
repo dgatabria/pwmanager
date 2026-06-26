@@ -29,13 +29,13 @@ _token_limiter = Limiter(key_func=get_remote_address)
 
 
 async def get_current_user_with_api_key(
+    request: Request,
     authorization: Annotated[str | None, Header()] = None,
     x_api_key: Annotated[str | None, Header()] = None,
-    request: Request = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Dependency to get current user from JWT token or API key.
+    Dependency to get current user from JWT token (cookie or header) or API key.
     Supports both session-based and API key authentication.
 
     Authentication strategy:
@@ -43,21 +43,31 @@ async def get_current_user_with_api_key(
       This prevents an attacker from supplying an invalid JWT that falls
       through to API-key auth and potentially authenticates as a different user.
     - If no Bearer header is present, fall back to API-key auth.
+    - Also checks the httpOnly cookie for session-based auth.
     Returns user_info dict.
     """
     user_id = None
     user_info = None
+    token = None
 
-    # Try JWT token first (standard Bearer token)
+    # JWT cookie name
+    JWT_COOKIE_NAME = "access_token"
+
+    # Try Authorization header (Bearer token)
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1]
+
+    # Fall back to httpOnly cookie if no Bearer header
+    if not token and request.cookies:
+        token = request.cookies.get(JWT_COOKIE_NAME)
+
+    if token:
+        # JWT token found (header or cookie) — use it exclusively
         try:
             from app.services.auth import AuthService
             payload = AuthService.decode_token(token)
             user_id = payload.get("sub")
             if not user_id:
-                # JWT decoded but missing "sub" claim — reject, do NOT
-                # fall through to API-key auth.
                 raise HTTPException(status_code=401, detail="Invalid token: missing user ID")
             user_info = {
                 "id": int(user_id),
@@ -69,14 +79,10 @@ async def get_current_user_with_api_key(
         except HTTPException:
             raise
         except Exception as exc:
-            # JWT validation failed — reject. Do NOT fall through to API key
-            # auth, because that would allow an attacker to supply an invalid
-            # JWT that silently bypasses JWT validation and authenticates as
-            # whatever user the API key belongs to.
             logging.warning("JWT validation failed, rejecting request: %s", exc)
             raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    # Only try API key if no Bearer header was provided at all
+    # Only try API key if no JWT token was found (no Bearer header AND no cookie)
     if user_id is None and (x_api_key or (authorization and authorization.startswith("ApiKey "))):
         api_key = x_api_key or (authorization.split(" ", 1)[1] if authorization else None)
         if api_key:
