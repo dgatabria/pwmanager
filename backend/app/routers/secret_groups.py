@@ -76,16 +76,19 @@ async def list_secret_groups(
     user_group_ids = [row[0] for row in result.all()]
 
     # Build query: owned groups OR groups shared with user's groups
-    query = select(SecretGroup).where(
-        SecretGroup.is_active == True,
-        or_(
-            SecretGroup.owner_id == user_id,
+    conditions = [SecretGroup.owner_id == user_id]
+    if user_group_ids:
+        conditions.append(
             SecretGroup.id.in_(
                 select(SecretGroupMember.secret_group_id).where(
-                    SecretGroupMember.group_id.in_(user_group_ids) if user_group_ids else [0]
+                    SecretGroupMember.group_id.in_(user_group_ids)
                 )
             )
-        ),
+        )
+
+    query = select(SecretGroup).where(
+        SecretGroup.is_active == True,
+        or_(*conditions),
     )
 
     if group_id:
