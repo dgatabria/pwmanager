@@ -33,6 +33,11 @@ export default function Dashboard() {
   // Get personal group ID for default selection
   const personalGroupId = secretGroups.find((g) => g.is_personal)?.id ?? null
 
+  // Get selected group name for header
+  const selectedGroupName = selectedGroupId
+    ? secretGroups.find((g) => g.id === selectedGroupId)?.name ?? ''
+    : ''
+
   // Fetch data
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -221,6 +226,11 @@ export default function Dashboard() {
             {/* Center - Secret List */}
             <div className="w-96 border-r border-gray-200 flex flex-col bg-white">
               <div className="p-3 border-b border-gray-200">
+                {selectedGroupName && (
+                  <p className="text-xs font-semibold text-blue-600 mb-2 truncate">
+                    {selectedGroupName}
+                  </p>
+                )}
                 <SearchBar
                   value={searchQuery}
                   onChange={setSearchQuery}
