@@ -6,6 +6,7 @@ interface User {
   email: string
   full_name: string
   is_superuser: boolean
+  personal_group_id: number | null
 }
 
 interface AuthContextType {
