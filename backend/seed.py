@@ -135,5 +135,24 @@ async def seed():
         print("\nSeed completed successfully!")
 
 
+async def run_migrations_only():
+    """Run only database migrations, no seeding."""
+    await init_db()
+    print("Migrations complete.")
+
+
 if __name__ == "__main__":
-    asyncio.run(seed())
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Seed script for the Password Manager")
+    parser.add_argument(
+        "--migrate-only",
+        action="store_true",
+        help="Run only database migrations without seeding data",
+    )
+    args = parser.parse_args()
+
+    if args.migrate_only:
+        asyncio.run(run_migrations_only())
+    else:
+        asyncio.run(seed())
