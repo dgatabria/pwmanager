@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -37,6 +37,10 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Foreign key to this user's personal secret group
+    personal_group_id: Mapped[int] = mapped_column(
+        ForeignKey("secret_groups.id"), nullable=False
+    )
 
     # Relationships
     groups: Mapped[list["Group"]] = relationship(
@@ -52,7 +56,7 @@ class User(Base):
         back_populates="user", lazy="selectin"
     )
     personal_group: Mapped["SecretGroup"] = relationship(
-        foreign_keys="[User.personal_group_id]",
+        foreign_keys="[personal_group_id]",
         back_populates="owner_user",
         lazy="selectin",
     )
