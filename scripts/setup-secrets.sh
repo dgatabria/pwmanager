@@ -26,8 +26,10 @@ openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/postgres_password.txt"
 echo "  - secret_key (JWT)"
 openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/secret_key.txt"
 
-echo "  - encryption_key (Fernet)"
-openssl rand -base64 32 > "$SCRIPT_DIR/backend/secrets/encryption_key.txt"
+echo "  - encryption_key (Fernet, url-safe base64)"
+# Fernet requires exactly 32 bytes encoded as URL-safe base64 (44 chars).
+# We use Python to guarantee a valid key (same method as encryption.py).
+python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())" > "$SCRIPT_DIR/backend/secrets/encryption_key.txt"
 
 echo "  - app_password (dedicated app user, least-privilege)"
 openssl rand -hex 32 > "$SCRIPT_DIR/backend/secrets/app_password.txt"
