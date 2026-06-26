@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
-import type { APIToken, APITokenCreateResponse, APITokenRecycleResponse } from '../types'
+import type { APIToken, APITokenCreateResponse, APITokenRecycleResponse, Group } from '../types'
 
 export default function Preferences() {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'tokens' | 'profile'>('tokens')
   const [apiTokens, setApiTokens] = useState<APIToken[]>([])
+  const [userGroups, setUserGroups] = useState<Group[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showNewTokenModal, setShowNewTokenModal] = useState(false)
@@ -18,10 +21,20 @@ export default function Preferences() {
   const [recycleTokenKey, setRecycleTokenKey] = useState('')
   const [recycleResponse, setRecycleResponse] = useState<APITokenRecycleResponse | null>(null)
 
-  // Fetch API tokens
+  // Fetch API tokens and user groups
   useEffect(() => {
     fetchTokens()
+    fetchGroups()
   }, [])
+
+  const fetchGroups = async () => {
+    try {
+      const groups = await api.get<Group[]>('/api/auth/user-groups')
+      setUserGroups(groups)
+    } catch (err: any) {
+      console.error('Failed to load user groups:', err)
+    }
+  }
 
   const fetchTokens = async () => {
     setLoading(true)
@@ -231,9 +244,10 @@ export default function Preferences() {
         )}
 
         {activeTab === 'profile' && (
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-2xl mx-auto space-y-6">
+            {/* Profile Card */}
             <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">User Profile</h2>
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Profile</h2>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Username</label>
@@ -247,6 +261,60 @@ export default function Preferences() {
                   <label className="block text-sm font-medium text-gray-700">Full Name</label>
                   <p className="mt-1 text-gray-900">{user?.full_name || '-'}</p>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Role</label>
+                  <p className="mt-1">
+                    <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${
+                      user?.is_superuser ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'
+                    }`}>
+                      {user?.is_superuser ? 'Superuser' : 'User'}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Groups Card */}
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Groups</h2>
+              {userGroups.length === 0 ? (
+                <p className="text-sm text-gray-500">You are not a member of any groups.</p>
+              ) : (
+                <div className="space-y-2">
+                  {userGroups.map((group) => (
+                    <div key={group.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{group.name}</p>
+                        <p className="text-xs text-gray-500">{group.description || 'No description'}</p>
+                      </div>
+                      <span className="inline-block px-2 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-700">
+                        member
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Actions Card */}
+            <div className="bg-white rounded-lg border border-gray-200 p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Account Actions</h2>
+              <div className="space-y-3">
+                <button
+                  onClick={() => navigate('/change-password')}
+                  className="w-full px-4 py-2 text-sm text-left text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+                >
+                  Change Password
+                </button>
+                <button
+                  onClick={() => {
+                    logout()
+                    navigate('/')
+                  }}
+                  className="w-full px-4 py-2 text-sm text-left text-white bg-red-600 rounded-lg hover:bg-red-700 transition"
+                >
+                  Sign Out
+                </button>
               </div>
             </div>
           </div>

@@ -73,9 +73,9 @@ function AppRoutes() {
       <Route
         path="/preferences"
         element={
-          <RequirePasswordChange>
+          <ProtectedRoute>
             <Preferences />
-          </RequirePasswordChange>
+          </ProtectedRoute>
         }
       />
       <Route path="*" element={<Navigate to="/" />} />
