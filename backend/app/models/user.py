@@ -52,7 +52,9 @@ class User(Base):
         back_populates="user", lazy="selectin"
     )
     personal_group: Mapped["SecretGroup"] = relationship(
-        back_populates="owner_user", lazy="selectin"
+        foreign_keys="[User.personal_group_id]",
+        back_populates="owner_user",
+        lazy="selectin",
     )
     owned_groups: Mapped[list["SecretGroup"]] = relationship(
         "SecretGroup", foreign_keys="[SecretGroup.owner_id]", back_populates="owner", lazy="selectin"
