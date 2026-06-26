@@ -986,7 +986,7 @@ async def admin_get_audit_logs(
                 ip_address=log.ip_address,
                 user_agent=log.user_agent,
                 details=log.details,
-                timestamp=log.timestamp.isoformat() + "Z" if log.timestamp else None,
+                timestamp=log.timestamp.isoformat() if log.timestamp else None,
             )
             for log in logs
         ],
