@@ -17,11 +17,20 @@ class EncryptionService:
     """Service for encrypting and decrypting secrets."""
 
     @staticmethod
+    def _is_valid_fernet_key(key: str) -> bool:
+        """Check if a string is a valid Fernet key (32 url-safe base64 bytes)."""
+        try:
+            Fernet(key.encode())
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
     def _load_or_generate_key() -> str:
         """Load encryption key from persistent storage or generate one.
 
         Priority:
-        1. ENCRYPTION_KEY environment variable (set at startup by config)
+        1. ENCRYPTION_KEY environment variable IF it is a valid Fernet key
         2. Persisted key file (read on first call, cached in settings)
         3. Generate new key and persist to file
 
@@ -31,13 +40,13 @@ class EncryptionService:
         """
         key = settings.ENCRYPTION_KEY
 
-        # If user provided a real key via env var, use it directly
-        if key:
+        # If user provided a valid Fernet key via env var, use it directly
+        if key and EncryptionService._is_valid_fernet_key(key):
             return key
 
         # If we already generated and cached a key in this process, use it
         cached_key = settings.ENCRYPTION_KEY
-        if cached_key:
+        if cached_key and EncryptionService._is_valid_fernet_key(cached_key):
             return cached_key
 
         # Try to load from persistent file
@@ -45,7 +54,7 @@ class EncryptionService:
             try:
                 with open(_ENCRYPTION_KEY_FILE, "r") as f:
                     persisted_key = f.read().strip()
-                if persisted_key:
+                if persisted_key and EncryptionService._is_valid_fernet_key(persisted_key):
                     settings.ENCRYPTION_KEY = persisted_key
                     return persisted_key
             except OSError:
@@ -65,7 +74,7 @@ class EncryptionService:
             # and the open() call — read it instead
             with open(_ENCRYPTION_KEY_FILE, "r") as f:
                 persisted_key = f.read().strip()
-            if persisted_key:
+            if persisted_key and EncryptionService._is_valid_fernet_key(persisted_key):
                 settings.ENCRYPTION_KEY = persisted_key
                 return persisted_key
             raise RuntimeError(
