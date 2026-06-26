@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { Secret, SecretGroup, SecretType } from '../types'
 
 interface Props {
@@ -24,21 +24,20 @@ export default function SecretForm({ initialData, secretGroups, onSubmit, onCanc
   const [keyLength, setKeyLength] = useState(initialData?.key_length || 4096)
   const [username, setUsername] = useState(initialData?.username || '')
   const [url, setUrl] = useState(initialData?.url || '')
-  const [groupId, setGroupId] = useState<number>(initialData?.group_id || 0)
+  const [groupId, setGroupId] = useState<number>(0)
   const [error, setError] = useState('')
 
-  // Find personal group or select first available group
-  const personalGroup = useMemo(
-    () => secretGroups.find((g) => g.is_personal),
+  // Auto-select personal group when groups are loaded (only for new secrets)
+  const personalGroupId = useMemo(
+    () => secretGroups.find((g) => g.is_personal)?.id,
     [secretGroups],
   )
-  const defaultGroupId = useMemo(() => {
-    if (initialData?.group_id) return initialData.group_id
-    if (personalGroup) return personalGroup.id
-    return secretGroups.length > 0 ? secretGroups[0].id : 0
-  }, [initialData, personalGroup, secretGroups])
 
-  const canSubmit = groupId > 0 && title.trim() && encryptedData.trim()
+  useEffect(() => {
+    if (!initialData && groupId === 0 && personalGroupId) {
+      setGroupId(personalGroupId)
+    }
+  }, [initialData, groupId, personalGroupId])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
