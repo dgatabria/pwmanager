@@ -32,8 +32,8 @@ export default function AdminUserManagement() {
     setError('')
     try {
       const [usersData, groupsData] = await Promise.all([
-        api.get<User[]>(`/admin/users${search ? `?search=${search}` : ''}`),
-        api.get<Group[]>('/admin/groups'),
+        api.get<User[]>(`/api/admin/users${search ? `?search=${search}` : ''}`),
+        api.get<Group[]>('/api/admin/groups'),
       ])
       setUsers(usersData)
       setGroups(groupsData)
@@ -54,7 +54,7 @@ export default function AdminUserManagement() {
       return
     }
     try {
-      await api.post('/admin/users', newUser)
+      await api.post('/api/admin/users', newUser)
       setShowCreateModal(false)
       setNewUser({
         username: '',
@@ -71,7 +71,7 @@ export default function AdminUserManagement() {
 
   const handleToggleActive = async (userId: number) => {
     try {
-      await api.post(`/admin/users/${userId}/toggle-active`, {})
+      await api.post(`/api/admin/users/${userId}/toggle-active`, {})
       await fetchData()
     } catch (err: any) {
       setError(err.message || 'Failed to update user')
@@ -105,7 +105,7 @@ export default function AdminUserManagement() {
       return
     }
     try {
-      await api.post(`/admin/users/${userId}/reset-password`, {
+      await api.post(`/api/admin/users/${userId}/reset-password`, {
         new_password: newPassword,
       })
       setShowResetPassword(null)
@@ -119,7 +119,7 @@ export default function AdminUserManagement() {
   const handleDeleteUser = async (userId: number) => {
     if (!confirm('Are you sure you want to soft-delete this user? They will be marked as deleted but their data will be preserved. Pass confirm=true to proceed.')) return
     try {
-      await api.delete(`/admin/users/${userId}?confirm=true`)
+      await api.delete(`/api/admin/users/${userId}?confirm=true`)
       await fetchData()
     } catch (err: any) {
       setError(err.message || 'Failed to delete user')
@@ -128,7 +128,7 @@ export default function AdminUserManagement() {
 
   const handleAddToGroup = async (userId: number, groupId: number) => {
     try {
-      await api.post(`/admin/users/${userId}/groups/${groupId}`, {})
+      await api.post(`/api/admin/users/${userId}/groups/${groupId}`, {})
       setShowGroupModal(null)
       await fetchData()
     } catch (err: any) {
@@ -138,7 +138,7 @@ export default function AdminUserManagement() {
 
   const handleRemoveFromGroup = async (userId: number, groupId: number) => {
     try {
-      await api.delete(`/admin/users/${userId}/groups/${groupId}`)
+      await api.delete(`/api/admin/users/${userId}/groups/${groupId}`)
       await fetchData()
     } catch (err: any) {
       setError(err.message || 'Failed to remove user from group')
@@ -157,7 +157,7 @@ export default function AdminUserManagement() {
       return
     }
     try {
-      await api.post('/admin/groups', newGroup)
+      await api.post('/api/admin/groups', newGroup)
       setShowCreateGroupModal(false)
       setNewGroup({ name: '', description: '' })
       await fetchData()
@@ -173,7 +173,7 @@ export default function AdminUserManagement() {
       return
     }
     try {
-      await api.put(`/admin/groups/${editingGroup.id}`, {
+      await api.put(`/api/admin/groups/${editingGroup.id}`, {
         name: editingGroup.name,
         description: editingGroup.description || null,
         is_active: editingGroup.is_active,
@@ -188,7 +188,7 @@ export default function AdminUserManagement() {
   const handleDeleteGroup = async (groupId: number) => {
     if (!confirm('Are you sure you want to delete this group? Users will be removed from it.')) return
     try {
-      await api.delete(`/admin/groups/${groupId}`)
+      await api.delete(`/api/admin/groups/${groupId}`)
       await fetchData()
     } catch (err: any) {
       setError(err.message || 'Failed to delete group')
@@ -199,7 +199,7 @@ export default function AdminUserManagement() {
     const group = groups.find(g => g.id === groupId)
     if (!group) return
     try {
-      await api.put(`/admin/groups/${groupId}`, { is_active: !group.is_active })
+      await api.put(`/api/admin/groups/${groupId}`, { is_active: !group.is_active })
       await fetchData()
     } catch (err: any) {
       setError(err.message || 'Failed to update group')

@@ -51,8 +51,8 @@ export default function AdminBackupRecovery() {
     setSuccess('')
     try {
       const [statusData, backupsData] = await Promise.all([
-        api.get<BackupStatus>('/admin/backup/status'),
-        api.get<BackupListResponse>('/admin/backup/list'),
+        api.get<BackupStatus>('/api/admin/backup/status'),
+        api.get<BackupListResponse>('/api/admin/backup/list'),
       ])
       setStatus(statusData)
       setBackups(backupsData.backups || [])
@@ -73,7 +73,7 @@ export default function AdminBackupRecovery() {
     setError('')
     setSuccess('')
     try {
-      const result = await api.post<BackupInfo>('/admin/backup/execute', {})
+      const result = await api.post<BackupInfo>('/api/admin/backup/execute', {})
       setSuccess(result.message || 'Backup executed successfully')
       await fetchData()
     } catch (err: any) {
@@ -93,7 +93,7 @@ export default function AdminBackupRecovery() {
     setError('')
     setSuccess('')
     try {
-      const result = await api.post<BackupInfo>(`/admin/backup/${backupIdToRestore}/restore`, {})
+      const result = await api.post<BackupInfo>(`/api/admin/backup/${backupIdToRestore}/restore`, {})
       setSuccess(result.message || 'Restore executed successfully')
       setShowRestoreModal(false)
       setBackupIdToRestore('')
@@ -112,7 +112,7 @@ export default function AdminBackupRecovery() {
     setSuccess('')
     setRotationResult(null)
     try {
-      const result = await api.post<RotationResult>('/admin/secrets/rotate-key', {})
+      const result = await api.post<RotationResult>('/api/admin/secrets/rotate-key', {})
       setRotationResult(result)
       setSuccess(result.message || 'Key rotation executed successfully')
       await fetchData()
