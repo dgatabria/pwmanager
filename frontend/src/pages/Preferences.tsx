@@ -5,7 +5,7 @@ import api from '../services/api'
 import type { APIToken, APITokenCreateResponse, APITokenRecycleResponse, Group } from '../types'
 
 export default function Preferences() {
-  const { user, logout } = useAuth()
+  const { user, logout, isLoading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'tokens' | 'profile'>('tokens')
   const [apiTokens, setApiTokens] = useState<APIToken[]>([])
@@ -21,11 +21,13 @@ export default function Preferences() {
   const [recycleTokenKey, setRecycleTokenKey] = useState('')
   const [recycleResponse, setRecycleResponse] = useState<APITokenRecycleResponse | null>(null)
 
-  // Fetch API tokens and user groups
+  // Fetch API tokens and user groups only after auth is verified
   useEffect(() => {
-    fetchTokens()
-    fetchGroups()
-  }, [])
+    if (!authLoading) {
+      fetchTokens()
+      fetchGroups()
+    }
+  }, [authLoading])
 
   const fetchGroups = async () => {
     try {
