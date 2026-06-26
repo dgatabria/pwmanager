@@ -15,7 +15,8 @@ export default function SecretDetail({ secret, onEdit, onDelete }: Props) {
   const [maskedData, setMaskedData] = useState<SecretMasked | null>(null)
   const [copyData, setCopyData] = useState<SecretCopy | null>(null)
   const [loading, setLoading] = useState(false)
-  const [copySuccess, setCopySuccess] = useState(false)
+  const [secretCopySuccess, setSecretCopySuccess] = useState(false)
+  const [usernameCopySuccess, setUsernameCopySuccess] = useState(false)
   const [error, setError] = useState('')
 
   const isSSHKey = secret.secret_type === 'ssh_key'
@@ -57,8 +58,8 @@ export default function SecretDetail({ secret, onEdit, onDelete }: Props) {
 
       // Copy to clipboard
       await navigator.clipboard.writeText(data.decrypted_data)
-      setCopySuccess(true)
-      setTimeout(() => setCopySuccess(false), 2000)
+      setSecretCopySuccess(true)
+      setTimeout(() => setSecretCopySuccess(false), 2000)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -70,8 +71,8 @@ export default function SecretDetail({ secret, onEdit, onDelete }: Props) {
     if (secret.username) {
       try {
         await navigator.clipboard.writeText(secret.username)
-        setCopySuccess(true)
-        setTimeout(() => setCopySuccess(false), 2000)
+        setUsernameCopySuccess(true)
+        setTimeout(() => setUsernameCopySuccess(false), 2000)
       } catch {
         // ignore
       }
@@ -180,7 +181,7 @@ export default function SecretDetail({ secret, onEdit, onDelete }: Props) {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
-              {copySuccess ? '✓ Copied!' : 'Copy To Clipboard'}
+              {secretCopySuccess ? '✓ Copied!' : 'Copy To Clipboard'}
             </button>
           </div>
         </div>
@@ -234,10 +235,17 @@ export default function SecretDetail({ secret, onEdit, onDelete }: Props) {
         </div>
       )}
 
-      {/* Copy success indicator */}
-      {copySuccess && (
+      {/* Secret copy success indicator */}
+      {secretCopySuccess && (
         <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-3 text-green-700 text-sm text-center">
           ✓ Copied to clipboard successfully
+        </div>
+      )}
+
+      {/* Username copy success indicator */}
+      {usernameCopySuccess && (
+        <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-3 text-green-700 text-sm text-center">
+          ✓ Username copied to clipboard
         </div>
       )}
 
