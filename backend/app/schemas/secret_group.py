@@ -29,14 +29,16 @@ class SecretGroupResponse(BaseModel):
     parent_id: int | None
     group_id: int | None
     owner_id: int
+    user_id: int | None
+    is_personal: bool
     is_active: bool
+    owner_username: str = ""
 
     class Config:
         from_attributes = True
 
 
 class SecretGroupDetail(SecretGroupResponse):
-    owner_username: str = ""
     group_ids: list[int] = []
     child_count: int = 0
     secret_count: int = 0

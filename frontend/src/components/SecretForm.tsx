@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { Secret, SecretGroup, SecretType } from '../types'
 
 interface Props {
@@ -24,8 +24,21 @@ export default function SecretForm({ initialData, secretGroups, onSubmit, onCanc
   const [keyLength, setKeyLength] = useState(initialData?.key_length || 4096)
   const [username, setUsername] = useState(initialData?.username || '')
   const [url, setUrl] = useState(initialData?.url || '')
-  const [groupId, setGroupId] = useState<number | null>(initialData?.group_id ?? null)
+  const [groupId, setGroupId] = useState<number>(initialData?.group_id || 0)
   const [error, setError] = useState('')
+
+  // Find personal group or select first available group
+  const personalGroup = useMemo(
+    () => secretGroups.find((g) => g.is_personal),
+    [secretGroups],
+  )
+  const defaultGroupId = useMemo(() => {
+    if (initialData?.group_id) return initialData.group_id
+    if (personalGroup) return personalGroup.id
+    return secretGroups.length > 0 ? secretGroups[0].id : 0
+  }, [initialData, personalGroup, secretGroups])
+
+  const canSubmit = groupId > 0 && title.trim() && encryptedData.trim()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -91,15 +104,19 @@ export default function SecretForm({ initialData, secretGroups, onSubmit, onCanc
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Group *</label>
           <select
-            value={groupId ?? ''}
-            onChange={(e) => setGroupId(e.target.value === '' ? null : Number(e.target.value))}
+            value={groupId}
+            onChange={(e) => setGroupId(Number(e.target.value))}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            required
           >
-            <option value="" disabled>None (personal)</option>
+            <option value={0} disabled>Select a group</option>
             {secretGroups.map((g) => (
-              <option key={g.id} value={g.id}>{g.name}</option>
+              <option key={g.id} value={g.id}>
+                {g.name}
+                {g.is_personal ? ' (Personal)' : ''}
+              </option>
             ))}
           </select>
         </div>

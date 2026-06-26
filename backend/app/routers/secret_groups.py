@@ -68,7 +68,10 @@ async def list_secret_groups(
     db: AsyncSession = Depends(get_db),
     group_id: int | None = Query(None),
 ):
-    """List all secret groups the user can access (owned + shared)."""
+    """List all secret groups the user can access (owned + shared).
+
+    Personal groups are returned first, followed by shared groups.
+    """
     # Get user group memberships
     result = await db.execute(
         select(UserGroup.group_id).where(UserGroup.user_id == user_id)
@@ -94,7 +97,11 @@ async def list_secret_groups(
     if group_id:
         query = query.where(SecretGroup.group_id == group_id)
 
-    query = query.order_by(SecretGroup.name)
+    # Order: personal groups first, then by name
+    query = query.order_by(
+        SecretGroup.is_personal.desc(),
+        SecretGroup.name,
+    )
 
     result = await db.execute(query)
     groups = result.scalars().all()
@@ -107,7 +114,10 @@ async def list_secret_groups(
             parent_id=g.parent_id,
             group_id=g.group_id,
             owner_id=g.owner_id,
+            user_id=g.user_id,
+            is_personal=g.is_personal,
             is_active=g.is_active,
+            owner_username=g.owner.username if g.owner else "",
         )
         for g in groups
     ]
@@ -122,15 +132,12 @@ async def create_secret_group(
 ):
     """Create a new secret group. The creator becomes the owner.
 
+    Personal groups are created automatically when a user is created.
+    This endpoint cannot be used to create personal groups.
+
     Authorization: the user may only share with groups they belong to.
     Duplicate names per user are not allowed.
     """
-    # Get the user's own group memberships
-    result = await db.execute(
-        select(UserGroup.group_id).where(UserGroup.user_id == current_user_id)
-    )
-    user_group_ids = {row[0] for row in result.all()}
-
     # Validate member_group_ids: must exist, be active, AND belong to the user
     if group_data.member_group_ids:
         result = await db.execute(
@@ -140,6 +147,11 @@ async def create_secret_group(
             )
         )
         existing_group_ids = {row[0] for row in result.all()}
+        # Get the user's own group memberships
+        result = await db.execute(
+            select(UserGroup.group_id).where(UserGroup.user_id == current_user_id)
+        )
+        user_group_ids = {row[0] for row in result.all()}
         # Groups that don't exist or are inactive
         non_existent = set(group_data.member_group_ids) - existing_group_ids
         # Groups the user doesn't belong to
@@ -176,6 +188,7 @@ async def create_secret_group(
         parent_id=group_data.parent_id,
         group_id=group_data.group_id,
         owner_id=current_user_id,
+        is_personal=False,
     )
     db.add(sg)
     await db.commit()
@@ -209,7 +222,10 @@ async def create_secret_group(
         parent_id=sg.parent_id,
         group_id=sg.group_id,
         owner_id=sg.owner_id,
+        user_id=sg.user_id,
+        is_personal=sg.is_personal,
         is_active=sg.is_active,
+        owner_username=sg.owner.username if sg.owner else "",
     )
 
 
@@ -299,9 +315,19 @@ async def update_secret_group(
 ):
     """Update a secret group (owner only).
 
+    Personal groups cannot be renamed, have their description changed,
+    or be shared. They can only be deactivated/activated by a superuser.
+
     Authorization: the owner may only share with groups they belong to.
     """
     sg = await _require_owner(group_id, current_user_id, db)
+
+    # Protect personal groups from modification
+    if sg.is_personal:
+        raise HTTPException(
+            status_code=403,
+            detail="Personal groups cannot be modified. They are managed automatically.",
+        )
 
     changes: list[str] = []
     if group_data.name is not None:
@@ -394,10 +420,20 @@ async def delete_secret_group(
 ):
     """Permanently delete a secret group and all secrets within it (owner only).
 
+    Personal groups cannot be deleted by users. They can only be removed
+    when the owning user is deleted by a superuser.
+
     This is a hard delete — all secrets in the group are permanently removed
     along with group memberships. The operation is auditable.
     """
     sg = await _require_owner(group_id, current_user_id, db)
+
+    # Protect personal groups from deletion
+    if sg.is_personal:
+        raise HTTPException(
+            status_code=403,
+            detail="Personal groups cannot be deleted. They are removed automatically when the owning user is deleted.",
+        )
 
     # Delete all secrets in this group (hard delete, not soft)
     result = await db.execute(
@@ -440,9 +476,18 @@ async def update_group_access(
 ):
     """Update which user groups can access this secret group (owner only).
 
+    Personal groups cannot be shared.
+
     Authorization: the owner may only share with groups they belong to.
     """
     sg = await _require_owner(group_id, current_user_id, db)
+
+    # Protect personal groups from sharing
+    if sg.is_personal:
+        raise HTTPException(
+            status_code=403,
+            detail="Personal groups cannot be shared.",
+        )
 
     # Get the owner's own group memberships
     result = await db.execute(
@@ -511,9 +556,18 @@ async def add_group_to_secret_group(
 ):
     """Add a user group to a secret group (owner only).
 
+    Personal groups cannot be shared.
+
     Authorization: the owner may only add groups they belong to.
     """
-    await _require_owner(group_id, current_user_id, db)
+    sg = await _require_owner(group_id, current_user_id, db)
+
+    # Protect personal groups from sharing
+    if sg.is_personal:
+        raise HTTPException(
+            status_code=403,
+            detail="Personal groups cannot be shared.",
+        )
 
     # Get the owner's own group memberships
     result = await db.execute(
@@ -573,8 +627,18 @@ async def remove_group_from_secret_group(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Remove a user group from a secret group (owner only)."""
-    await _require_owner(group_id, current_user_id, db)
+    """Remove a user group from a secret group (owner only).
+
+    Personal groups cannot be shared.
+    """
+    sg = await _require_owner(group_id, current_user_id, db)
+
+    # Protect personal groups from sharing
+    if sg.is_personal:
+        raise HTTPException(
+            status_code=403,
+            detail="Personal groups cannot be shared.",
+        )
 
     result = await db.execute(
         select(SecretGroupMember)

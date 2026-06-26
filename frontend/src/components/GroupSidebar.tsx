@@ -3,13 +3,17 @@ import type { SecretGroup, Group } from '../types'
 interface Props {
   groups: SecretGroup[]
   userGroups: Group[]
-  selectedGroupId: 'personal' | number | null
-  onSelectGroup: (id: 'personal' | number | null) => void
+  selectedGroupId: number | null
+  onSelectGroup: (id: number | null) => void
   onAddGroup: () => void
   onDeleteGroup?: (id: number) => void
 }
 
 export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSelectGroup, onAddGroup, onDeleteGroup }: Props) {
+  // Separate personal and non-personal groups
+  const personalGroups = groups.filter((g) => g.is_personal)
+  const sharedGroups = groups.filter((g) => !g.is_personal)
+
   return (
     <div className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0 overflow-y-auto">
       {/* Header with Add button */}
@@ -26,23 +30,25 @@ export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSe
         </button>
       </div>
 
-      {/* Personal Secrets */}
-      <div className="p-2">
-        <button
-          onClick={() => onSelectGroup('personal')}
-          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition ${
-            selectedGroupId === 'personal'
-              ? 'bg-blue-50 text-blue-700'
-              : 'text-gray-700 hover:bg-gray-100'
-          }`}
-        >
-          Personal Secrets
-        </button>
-      </div>
+      {/* Personal Groups */}
+      {personalGroups.map((group) => (
+        <div key={group.id} className="p-2">
+          <button
+            onClick={() => onSelectGroup(group.id)}
+            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition ${
+              selectedGroupId === group.id
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            {group.name}
+          </button>
+        </div>
+      ))}
 
-      {/* Secret Groups List */}
+      {/* Shared Groups List */}
       <div className="px-2 pb-2 flex-1">
-        {groups.length === 0 ? (
+        {sharedGroups.length === 0 && personalGroups.length === 0 ? (
           <div className="px-3 py-4 text-center">
             <p className="text-xs text-gray-400">No groups yet</p>
             <button
@@ -53,7 +59,7 @@ export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSe
             </button>
           </div>
         ) : (
-          groups.map((group) => (
+          sharedGroups.map((group) => (
             <div
               key={group.id}
               className={`mb-1 rounded-lg transition group relative ${
@@ -82,8 +88,8 @@ export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSe
                   </span>
                 )}
               </button>
-              {/* Delete button - only visible on hover, only for owner */}
-              {onDeleteGroup && (
+              {/* Delete button - only visible on hover, only for owner, not for personal groups */}
+              {onDeleteGroup && !group.is_personal && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation()

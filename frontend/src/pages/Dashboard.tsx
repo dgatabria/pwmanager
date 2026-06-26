@@ -21,7 +21,7 @@ export default function Dashboard() {
   const [secretGroups, setSecretGroups] = useState<SecretGroup[]>([])
   const [groups, setGroups] = useState<Group[]>([])
   const [selectedSecret, setSelectedSecret] = useState<Secret | null>(null)
-  const [selectedGroupId, setSelectedGroupId] = useState<'personal' | number | null>(null)
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false)
   const [editingSecret, setEditingSecret] = useState<Secret | null>(null)
@@ -30,15 +30,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // Get personal group ID for default selection
+  const personalGroupId = secretGroups.find((g) => g.is_personal)?.id ?? null
+
   // Fetch data
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
       let secretsUrl = '/api/secrets'
-      if (selectedGroupId === 'personal') {
-        secretsUrl += '?view_mode=personal'
-      } else if (selectedGroupId != null && typeof selectedGroupId === 'number') {
+      if (selectedGroupId) {
         secretsUrl += `?group_id=${selectedGroupId}`
       }
       const [secretsData, userGroupsData, secretGroupsData] = await Promise.all([
@@ -132,7 +133,7 @@ export default function Dashboard() {
         secret_type: 'ssh_key',
         encrypted_data: response.private_key,
         key_length: response.key_length,
-        group_id: typeof selectedGroupId === 'number' ? selectedGroupId : null,
+        group_id: selectedGroupId || personalGroupId || 0,
       }
 
       setEditingSecret(null)

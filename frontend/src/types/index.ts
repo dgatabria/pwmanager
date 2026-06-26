@@ -10,7 +10,7 @@ export interface Secret {
   key_length: number | null
   username: string | null
   url: string | null
-  group_id: number | null
+  group_id: number
   owner_id: number
   is_active: boolean
   created_at: string
@@ -102,6 +102,8 @@ export interface SecretGroup {
   parent_id: number | null
   group_id: number | null
   owner_id: number
+  user_id: number | null
+  is_personal: boolean
   owner_username?: string
   is_active: boolean
   group_ids?: number[]

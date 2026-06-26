@@ -1,6 +1,6 @@
 """Secret group model for organizing secrets hierarchically."""
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -12,13 +12,18 @@ class SecretGroup(Base):
     Each secret group has an owner (the user who created it).
     The owner controls who can access the group via the secret_group_members
     junction table, which maps user groups to the secret group with permissions.
+
+    Personal groups (is_personal=True) are automatically created for each user
+    when they are created by an admin. They cannot be renamed, shared, or deleted
+    by the user. Only a superuser can delete a personal group (which happens
+    automatically when the owning user is soft-deleted).
     """
 
     __tablename__ = "secret_groups"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("secret_groups.id"), nullable=True
     )
@@ -28,11 +33,18 @@ class SecretGroup(Base):
     owner_id: Mapped[int] = mapped_column(
         ForeignKey("users.id"), nullable=False
     )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
+    is_personal: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(default=True)
 
     # Relationships
     owner: Mapped["User"] = relationship(
         "User", foreign_keys=[owner_id], lazy="select"
+    )
+    user: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[user_id], lazy="select"
     )
     parent: Mapped["SecretGroup | None"] = relationship(
         "SecretGroup", remote_side=[id], back_populates="children"

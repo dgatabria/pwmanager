@@ -15,6 +15,7 @@ from app.models.group import Group
 from app.models.user_group import UserGroup
 from app.models.saml_config import SAMLConfig
 from app.models.secret import Secret
+from app.models.secret_group import SecretGroup
 from app.models.audit_log import AuditLog
 from app.services.maintenance import set_maintenance_mode, is_maintenance_mode
 from app.schemas.auth import (
@@ -142,6 +143,18 @@ async def admin_create_user(
         is_superuser=user_data.is_superuser,
     )
     db.add(user)
+    await db.flush()
+    
+    # Create personal secret group for the new user
+    personal_group = SecretGroup(
+        name="Personal",
+        description="Your personal secret group",
+        owner_id=user.id,
+        user_id=user.id,
+        is_personal=True,
+        is_active=True,
+    )
+    db.add(personal_group)
     await db.commit()
     await db.refresh(user)
     
@@ -370,6 +383,27 @@ async def admin_delete_user(
             detail="Cannot delete your own account",
         )
     
+    # Delete the user's personal secret group and all secrets within it
+    result = await db.execute(
+        select(SecretGroup).where(
+            SecretGroup.owner_id == user_id,
+            SecretGroup.is_personal == True,
+        )
+    )
+    personal_group = result.scalar_one_or_none()
+    secrets_count = 0
+    if personal_group:
+        # Delete all secrets in the personal group (hard delete)
+        result = await db.execute(
+            select(Secret).where(Secret.group_id == personal_group.id)
+        )
+        secrets = result.scalars().all()
+        secrets_count = len(secrets)
+        for secret in secrets:
+            await db.delete(secret)
+        # Delete the personal group itself
+        await db.delete(personal_group)
+    
     # Soft-delete: mark as deleted instead of permanent removal
     user.is_deleted = True
     user.is_active = False
@@ -383,7 +417,7 @@ async def admin_delete_user(
         current_user_id,
         entity_id=user.id,
         request=request,
-        details=f"Soft-deleted user '{user.username}'",
+        details=f"Soft-deleted user '{user.username}' (removed personal group and {secrets_count} secret(s))",
     )
 
 

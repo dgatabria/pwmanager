@@ -156,7 +156,7 @@ async def list_secrets(
     group_id: int | None = Query(None),
     search: str | None = Query(None),
     secret_type: str | None = Query(None),
-    view_mode: str | None = Query(None, description="personal|group|all. 'personal' returns only secrets with no group or in non-shared groups owned by the user."),
+    view_mode: str | None = Query(None, description="personal|group|all. 'personal' returns only secrets in the user's personal group or in non-shared groups owned by the user."),
 ):
     """List secrets accessible to the current user.
 
@@ -219,18 +219,17 @@ async def list_secrets(
     )
 
     if view_mode == "personal":
-        # Personal secrets: owned by user AND (no group OR group has no shared members)
+        # Personal secrets: owned by user AND in personal group (is_personal=True)
         personal_query = (
             select(Secret.id)
             .where(
                 Secret.is_active == True,
                 Secret.owner_id == user_id,
-                or_(
-                    Secret.group_id.is_(None),
-                    Secret.group_id.not_in(
-                        select(SecretGroupMember.secret_group_id)
-                        .distinct()
-                    ),
+                Secret.group_id.in_(
+                    select(SecretGroup.id).where(
+                        SecretGroup.owner_id == user_id,
+                        SecretGroup.is_personal == True,
+                    )
                 ),
             )
         )
@@ -330,13 +329,15 @@ async def create_secret(
     The plaintext_data is encrypted server-side before being stored in the
     database. This ensures secrets are never stored in plaintext.
 
+    Every secret must belong to a group. Personal secrets belong to the
+    user's personal group.
+
     Rate limited to 30 requests per minute to prevent abuse.
     """
     user_id = user_info["id"]
 
-    # Verify user has write access to the target secret group (skip if personal)
-    if secret_data.group_id is not None:
-        await check_secret_group_access(secret_data.group_id, user_id, db, permission="write")
+    # Verify user has write access to the target secret group
+    await check_secret_group_access(secret_data.group_id, user_id, db, permission="write")
 
     # Encrypt plaintext_data server-side before persisting
     encrypted = EncryptionService.encrypt(secret_data.plaintext_data)
@@ -367,6 +368,8 @@ async def create_secret(
         details=f"Created secret '{secret_data.title}' (type={secret_data.secret_type})",
     )
 
+    group_name = secret.group.name if secret.group else None
+
     return SecretResponse(
         id=secret.id,
         title=secret.title,
@@ -376,6 +379,7 @@ async def create_secret(
         username=secret.username,
         url=secret.url,
         group_id=secret.group_id,
+        group_name=group_name,
         is_active=secret.is_active,
         created_at=str(secret.created_at),
         updated_at=str(secret.updated_at),

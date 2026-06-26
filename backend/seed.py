@@ -93,8 +93,22 @@ async def seed():
         )
         session.add(admin)
         await session.commit()
+        await session.flush()
         print(f"✓ Created admin user (password: {admin_password})")
         print("⚠️  You MUST change this password on first login.")
+
+        # Create personal secret group for the admin
+        personal_group = SecretGroup(
+            name="Personal",
+            description="Your personal secret group",
+            owner_id=admin.id,
+            user_id=admin.id,
+            is_personal=True,
+            is_active=True,
+        )
+        session.add(personal_group)
+        await session.commit()
+        print("✓ Created personal secret group for admin")
 
         # Create default groups
         default_groups = [
