@@ -420,7 +420,10 @@ async def update_secret_group(
         parent_id=sg.parent_id,
         group_id=sg.group_id,
         owner_id=sg.owner_id,
+        user_id=sg.user_id,
+        is_personal=sg.is_personal,
         is_active=sg.is_active,
+        owner_username=sg.owner.username if sg.owner else "",
     )
 
 
