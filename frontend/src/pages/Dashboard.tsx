@@ -62,6 +62,13 @@ export default function Dashboard() {
     }
   }, [selectedGroupId])
 
+  // Auto-select personal group on first load
+  useEffect(() => {
+    if (selectedGroupId === null && personalGroupId) {
+      setSelectedGroupId(personalGroupId)
+    }
+  }, [selectedGroupId, personalGroupId])
+
   useEffect(() => {
     fetchData()
   }, [fetchData])
