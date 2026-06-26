@@ -47,6 +47,7 @@ class UserResponse(BaseModel):
     full_name: str | None
     is_active: bool
     is_superuser: bool
+    personal_group_id: int | None
     created_at: str
 
     class Config:

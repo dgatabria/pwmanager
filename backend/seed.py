@@ -107,6 +107,9 @@ async def seed():
             is_active=True,
         )
         session.add(personal_group)
+        await session.flush()
+        # Link user to their personal group
+        admin.personal_group_id = personal_group.id
         await session.commit()
         print("✓ Created personal secret group for admin")
 

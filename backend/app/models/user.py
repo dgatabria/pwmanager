@@ -51,6 +51,12 @@ class User(Base):
     api_tokens: Mapped[list["APIToken"]] = relationship(
         back_populates="user", lazy="selectin"
     )
+    personal_group: Mapped["SecretGroup"] = relationship(
+        back_populates="owner_user", lazy="selectin"
+    )
+    owned_groups: Mapped[list["SecretGroup"]] = relationship(
+        "SecretGroup", foreign_keys="[SecretGroup.owner_id]", back_populates="owner", lazy="selectin"
+    )
 
     def __repr__(self) -> str:
         return f"<User {self.username}>"

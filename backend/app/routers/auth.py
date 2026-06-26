@@ -402,6 +402,7 @@ async def get_me(
         full_name=user.full_name,
         is_active=user.is_active,
         is_superuser=user.is_superuser,
+        personal_group_id=user.personal_group_id,
         created_at=str(user.created_at),
     )
 

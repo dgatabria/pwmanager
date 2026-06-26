@@ -8,9 +8,10 @@ interface Props {
   onAddGroup: () => void
   onEditGroup?: (group: SecretGroup) => void
   onDeleteGroup?: (id: number) => void
+  personalGroupId?: number | null
 }
 
-export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSelectGroup, onAddGroup, onEditGroup, onDeleteGroup }: Props) {
+export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSelectGroup, onAddGroup, onEditGroup, onDeleteGroup, personalGroupId }: Props) {
   // Separate personal and non-personal groups
   const personalGroups = groups.filter((g) => g.is_personal)
   const sharedGroups = groups.filter((g) => !g.is_personal)
@@ -89,8 +90,8 @@ export default function GroupSidebar({ groups, userGroups, selectedGroupId, onSe
                   </span>
                 )}
               </button>
-              {/* Action buttons - only visible on hover, only for non-personal groups */}
-              {!group.is_personal && (
+              {/* Action buttons - only visible on hover, only for non-personal groups AND not the user's own personal group */}
+              {group.id !== personalGroupId && (
                 <div className="absolute right-1 bottom-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
                   {onEditGroup && (
                     <button

@@ -51,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: data.email,
         full_name: data.full_name,
         is_superuser: data.is_superuser,
+        personal_group_id: data.personal_group_id ?? null,
       })
     } catch {
       setUser(null)

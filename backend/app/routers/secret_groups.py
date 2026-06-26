@@ -191,8 +191,14 @@ async def create_secret_group(
         is_personal=False,
     )
     db.add(sg)
-    await db.commit()
-    await db.refresh(sg)
+    await db.flush()
+
+    # Get owner username before commit (avoid lazy load after commit)
+    result = await db.execute(
+        select(User).where(User.id == current_user_id)
+    )
+    owner = result.scalar_one_or_none()
+    owner_username = owner.username if owner else ""
 
     # Grant access to specified user groups
     if group_data.member_group_ids:
@@ -202,7 +208,8 @@ async def create_secret_group(
                 group_id=gid,
             )
             db.add(sgm)
-        await db.commit()
+
+    await db.commit()
 
     # Audit: secret group creation
     await AuditService.log_crud(
@@ -225,7 +232,7 @@ async def create_secret_group(
         user_id=sg.user_id,
         is_personal=sg.is_personal,
         is_active=sg.is_active,
-        owner_username=sg.owner.username if sg.owner else "",
+        owner_username=owner_username,
     )
 
 
@@ -315,18 +322,24 @@ async def update_secret_group(
 ):
     """Update a secret group (owner only).
 
-    Personal groups cannot be renamed, have their description changed,
-    or be shared. They can only be deactivated/activated by a superuser.
+    The user's own personal group (identified by personal_group_id in the users
+    table) cannot be renamed, have its description changed, or be shared.
+    Other personal groups (e.g. other users' personal groups that you own) can
+    be edited freely.
 
     Authorization: the owner may only share with groups they belong to.
     """
     sg = await _require_owner(group_id, current_user_id, db)
 
-    # Protect personal groups from modification
-    if sg.is_personal:
+    # Protect only the user's OWN personal group from modification
+    result = await db.execute(
+        select(User).where(User.id == current_user_id)
+    )
+    user = result.scalar_one_or_none()
+    if user and user.personal_group_id == sg.id:
         raise HTTPException(
             status_code=403,
-            detail="Personal groups cannot be modified. They are managed automatically.",
+            detail="Your personal group cannot be modified. It is managed automatically.",
         )
 
     changes: list[str] = []
@@ -420,19 +433,23 @@ async def delete_secret_group(
 ):
     """Permanently delete a secret group and all secrets within it (owner only).
 
-    Personal groups cannot be deleted by users. They can only be removed
-    when the owning user is deleted by a superuser.
+    The user's own personal group (identified by personal_group_id in the users
+    table) cannot be deleted. Other personal groups can be deleted freely.
 
     This is a hard delete — all secrets in the group are permanently removed
     along with group memberships. The operation is auditable.
     """
     sg = await _require_owner(group_id, current_user_id, db)
 
-    # Protect personal groups from deletion
-    if sg.is_personal:
+    # Protect only the user's OWN personal group from deletion
+    result = await db.execute(
+        select(User).where(User.id == current_user_id)
+    )
+    user = result.scalar_one_or_none()
+    if user and user.personal_group_id == sg.id:
         raise HTTPException(
             status_code=403,
-            detail="Personal groups cannot be deleted. They are removed automatically when the owning user is deleted.",
+            detail="Your personal group cannot be deleted. It is managed automatically.",
         )
 
     # Delete all secrets in this group (hard delete, not soft)

@@ -13,7 +13,7 @@ import UserManagement from '../components/UserManagement'
 import CreateSecretGroupModal from '../components/CreateSecretGroupModal'
 
 export default function Dashboard() {
-  const { logout } = useAuth()
+  const { logout, user } = useAuth()
   const navigate = useNavigate()
 
   // State
@@ -257,6 +257,7 @@ export default function Dashboard() {
               onAddGroup={() => setShowCreateGroupModal(true)}
               onEditGroup={handleEditSecretGroup}
               onDeleteGroup={handleDeleteSecretGroup}
+              personalGroupId={user?.personal_group_id ?? null}
             />
 
             {/* Center - Secret List */}

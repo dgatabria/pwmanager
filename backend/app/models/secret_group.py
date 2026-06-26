@@ -41,10 +41,13 @@ class SecretGroup(Base):
 
     # Relationships
     owner: Mapped["User"] = relationship(
-        "User", foreign_keys=[owner_id], lazy="select"
+        "User", foreign_keys=[owner_id], lazy="selectin", back_populates="owned_groups"
+    )
+    owner_user: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[user_id], lazy="selectin", back_populates="personal_group"
     )
     user: Mapped["User | None"] = relationship(
-        "User", foreign_keys=[user_id], lazy="select"
+        "User", foreign_keys=[user_id], lazy="selectin"
     )
     parent: Mapped["SecretGroup | None"] = relationship(
         "SecretGroup", remote_side=[id], back_populates="children"
