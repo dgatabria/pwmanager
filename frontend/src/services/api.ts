@@ -86,11 +86,11 @@ const api = {
 
   // Audit-logged endpoints
   getMaskedSecret: <T>(secretId: number) =>
-    api.request<T>(`/secrets/${secretId}/masked`, { method: 'GET' }),
+    api.request<T>(`/api/secrets/${secretId}/masked`, { method: 'GET' }),
   revealSecret: <T>(secretId: number) =>
-    api.request<T>(`/secrets/${secretId}/reveal`, { method: 'GET' }),
+    api.request<T>(`/api/secrets/${secretId}/reveal`, { method: 'GET' }),
   copySecret: <T>(secretId: number) =>
-    api.request<T>(`/secrets/${secretId}/copy`, { method: 'POST' }),
+    api.request<T>(`/api/secrets/${secretId}/copy`, { method: 'POST' }),
 }
 
 export default api
