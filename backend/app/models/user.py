@@ -56,7 +56,7 @@ class User(Base):
         back_populates="user", lazy="selectin"
     )
     personal_group: Mapped["SecretGroup"] = relationship(
-        foreign_keys="[personal_group_id]",
+        primaryjoin="User.personal_group_id == foreign(SecretGroup.id)",
         back_populates="owner_user",
         lazy="selectin",
     )
