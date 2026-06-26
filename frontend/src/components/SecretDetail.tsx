@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import api from '../services/api'
 import { sanitizeUrl } from '../utils/url'
 import type { Secret, SecretMasked, SecretReveal, SecretCopy } from '../types'
@@ -21,9 +21,9 @@ export default function SecretDetail({ secret, onEdit, onDelete }: Props) {
   const isSSHKey = secret.secret_type === 'ssh_key'
 
   // Load masked data on mount
-  useState(() => {
+  useEffect(() => {
     loadMasked()
-  })
+  }, [secret.id])
 
   const loadMasked = async () => {
     try {
