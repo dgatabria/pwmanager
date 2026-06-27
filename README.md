@@ -210,6 +210,12 @@ export SECRETSMANAGER_BASE_URL=https://pm.example.com
 # Recuperar un secreto por nombre
 ./scripts/passwordmanager retrieve secret "Mi Contraseña"
 
+# Revelar un secreto con datos descifrados
+./scripts/passwordmanager reveal secret 1
+
+# Revelar un secreto por nombre
+./scripts/passwordmanager reveal secret "Mi ContraseÃ±a"
+
 # Eliminar un secreto
 ./scripts/passwordmanager delete secret 1
 
