@@ -180,22 +180,14 @@ async def list_secrets(
             Secret.is_active == True,
             or_(
                 Secret.owner_id == user_id,
-                Secret.id.in_(
-                    select(Secret.id).where(
-                        Secret.is_active == True,
-                        Secret.id.in_(
-                            select(SecretGroupMember.secret_group_id).where(
-                                SecretGroupMember.permission == "read"
-                            ).join(
-                                SecretGroup,
-                                SecretGroupMember.secret_group_id == SecretGroup.id,
-                            ).join(
-                                UserGroup,
-                                UserGroup.group_id == SecretGroupMember.group_id,
-                            ).where(
-                                UserGroup.user_id == user_id,
-                            )
-                        ),
+                Secret.group_id.in_(
+                    select(SecretGroupMember.secret_group_id).where(
+                        SecretGroupMember.permission == "read"
+                    ).join(
+                        UserGroup,
+                        UserGroup.group_id == SecretGroupMember.group_id,
+                    ).where(
+                        UserGroup.user_id == user_id,
                     )
                 ),
             ),
