@@ -244,6 +244,7 @@ passwordmanager <comando> [subcomando] [argumento]
 | `create` | `group` | Crear un nuevo grupo de secretos |
 | `retrieve` | `secret` | Recuperar un secreto por ID o nombre |
 | `retrieve` | `secret-ssh` | Recuperar una SSH key |
+| `reveal` | `secret` | Revelar un secreto con datos descifrados |
 | `delete` | `secret` | Eliminar un secreto |
 | `delete` | `group` | Eliminar un grupo de secretos |
 | `token` | `list` | Listar API tokens |
