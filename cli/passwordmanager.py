@@ -190,7 +190,7 @@ def cmd_create_secret_ssh(client, args):
 
 
 def cmd_retrieve_secret(client, args):
-    """Retrieve and display a secret."""
+    """Retrieve and display a secret (masked data)."""
     query = args.query
     secrets = client.list_secrets()
     secret = None
@@ -219,6 +219,38 @@ def cmd_retrieve_secret(client, args):
     print(f"  {bold('URL:')}         {masked.get('url', '-')}")
     print(f"  {bold('Data:')}        {masked['decrypted_data']}")
     print(f"\n  {dim('Audit:')} {masked.get('audit_event', '-')} at {masked.get('audit_timestamp', '-')}")
+
+
+def cmd_reveal_secret(client, args):
+    """Reveal and display a secret with decrypted data."""
+    query = args.query
+    secrets = client.list_secrets()
+    secret = None
+    if query.isdigit():
+        try:
+            secret = client.get_secret(int(query))
+        except SystemExit:
+            pass
+    else:
+        for s in secrets:
+            if query.lower() in s["title"].lower():
+                secret = s
+                break
+    if not secret:
+        print_error(f"Secret '{query}' not found")
+        sys.exit(1)
+    try:
+        revealed = client.reveal_secret(secret["id"])
+    except SystemExit:
+        print_error(f"Failed to reveal secret '{secret['title']}'")
+        sys.exit(1)
+    print(f"\n  {bold('Title:')}       {revealed['title']}")
+    print(f"  {bold('Type:')}        {revealed['secret_type']}")
+    print(f"  {bold('Description:')} {revealed.get('description', '-')}")
+    print(f"  {bold('Username:')}    {revealed.get('username', '-')}")
+    print(f"  {bold('URL:')}         {revealed.get('url', '-')}")
+    print(f"  {bold('Data:')}        {revealed['decrypted_data']}")
+    print(f"\n  {dim('Audit:')} {revealed.get('audit_event', '-')} at {revealed.get('audit_timestamp', '-')}")
 
 
 def cmd_retrieve_secret_ssh(client, args):
@@ -467,6 +499,13 @@ def build_parser():
     retrieve_ssh = retrieve_sub.add_parser("secret-ssh", help="Retrieve an SSH key")
     retrieve_ssh.add_argument("query", help="SSH key secret ID")
     retrieve_ssh.set_defaults(func=cmd_retrieve_secret_ssh)
+
+    # reveal
+    reveal_parser = subparsers.add_parser("reveal", help="Reveal a secret with decrypted data")
+    reveal_sub = reveal_parser.add_subparsers(dest="subcommand")
+    reveal_secret = reveal_sub.add_parser("secret", help="Reveal a secret by ID or name")
+    reveal_secret.add_argument("query", help="Secret ID or name")
+    reveal_secret.set_defaults(func=cmd_reveal_secret)
 
     # delete
     delete_parser = subparsers.add_parser("delete", help="Delete a resource")

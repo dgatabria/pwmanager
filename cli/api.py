@@ -107,6 +107,10 @@ class PMClient:
         """Get a secret with masked data (audit-logged)."""
         return self.get(f"/api/secrets/{secret_id}/masked")
 
+    def reveal_secret(self, secret_id: int) -> dict:
+        """Get a secret with decrypted data (audit-logged)."""
+        return self.get(f"/api/secrets/{secret_id}/reveal")
+
     def create_secret(
         self,
         title: str,
