@@ -264,7 +264,8 @@ async def get_secret_group_detail(
         sg.id in [
             row[0] for row in await db.execute(
                 select(SecretGroupMember.secret_group_id).where(
-                    SecretGroupMember.group_id.in_(user_group_ids)
+                    SecretGroupMember.group_id.in_(user_group_ids),
+                    SecretGroupMember.permission == "read",
                 )
             ).all()
         ]
