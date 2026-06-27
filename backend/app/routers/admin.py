@@ -102,6 +102,7 @@ async def admin_list_users(
             full_name=u.full_name,
             is_active=u.is_active,
             is_superuser=u.is_superuser,
+            personal_group_id=u.personal_group_id,
             created_at=str(u.created_at),
         )
         for u in users
@@ -180,6 +181,7 @@ async def admin_create_user(
         full_name=user.full_name,
         is_active=user.is_active,
         is_superuser=user.is_superuser,
+        personal_group_id=user.personal_group_id,
         created_at=str(user.created_at),
     )
 
@@ -248,6 +250,7 @@ async def admin_update_user(
         full_name=user.full_name,
         is_active=user.is_active,
         is_superuser=user.is_superuser,
+        personal_group_id=user.personal_group_id,
         created_at=str(user.created_at),
     )
 
@@ -348,6 +351,7 @@ async def admin_toggle_active(
         full_name=user.full_name,
         is_active=user.is_active,
         is_superuser=user.is_superuser,
+        personal_group_id=user.personal_group_id,
         created_at=str(user.created_at),
     )
 
