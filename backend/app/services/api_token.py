@@ -67,51 +67,47 @@ class APITokenService:
         """
         Validate an API token using bcrypt.checkpw.
 
-        The token is hashed first, then looked up by its hash. This ensures
-        a single indexed lookup instead of scanning every active token in the
-        database.
+        Queries all active tokens and verifies each with bcrypt.checkpw.
+        bcrypt includes a random salt, so the token hash cannot be used
+        for deterministic lookups.
 
         Returns (api_token, user_info) if valid, (None, None) if invalid.
         """
-        token_hash = APITokenService.hash_token(token)
-
         result = await db.execute(
             select(APIToken)
             .where(APIToken.is_active == True)
-            .where(APIToken.token_hash == token_hash)
         )
-        api_token = result.scalar_one_or_none()
+        api_tokens = result.scalars().all()
 
-        if not api_token:
-            return None, None
+        for api_token in api_tokens:
+            if not bcrypt.checkpw(
+                token.encode("utf-8"),
+                api_token.token_hash.encode("utf-8"),
+            ):
+                continue
 
-        # Check expiration (before verifying, to avoid timing leaks on expired tokens)
-        if api_token.expires_at and datetime.now(timezone.utc) > api_token.expires_at:
-            api_token.is_active = False
+            # Check expiration
+            if api_token.expires_at and datetime.now(timezone.utc) > api_token.expires_at:
+                api_token.is_active = False
+                await db.commit()
+                return None, None
+
+            # Update last used
+            api_token.last_used_at = datetime.now(timezone.utc)
             await db.commit()
-            return None, None
 
-        # Verify token against bcrypt hash (constant-time comparison)
-        if not bcrypt.checkpw(
-            token.encode("utf-8"),
-            api_token.token_hash.encode("utf-8"),
-        ):
-            return None, None
+            # Get user info
+            user_info = {
+                "id": api_token.user_id,
+                "username": api_token.user.username,
+                "email": api_token.user.email,
+                "full_name": api_token.user.full_name,
+                "is_superuser": api_token.user.is_superuser,
+            }
 
-        # Update last used
-        api_token.last_used_at = datetime.now(timezone.utc)
-        await db.commit()
+            return api_token, user_info
 
-        # Get user info
-        user_info = {
-            "id": api_token.user_id,
-            "username": api_token.user.username,
-            "email": api_token.user.email,
-            "full_name": api_token.user.full_name,
-            "is_superuser": api_token.user.is_superuser,
-        }
-
-        return api_token, user_info
+        return None, None
 
     @staticmethod
     async def list_user_tokens(
