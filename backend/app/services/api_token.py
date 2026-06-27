@@ -2,7 +2,6 @@
 
 import secrets
 import bcrypt
-import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -10,8 +9,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.api_token import APIToken
-
-logger = logging.getLogger(__name__)
 
 
 class APITokenService:
@@ -82,23 +79,11 @@ class APITokenService:
         )
         api_tokens = result.scalars().all()
 
-        logger.info("validate_token: token starts with %s, found %d active tokens",
-                     token[:10] if len(token) > 10 else token, len(api_tokens))
-
         for api_token in api_tokens:
-            logger.info("validate_token: checking against token id=%s, hash starts with %s",
-                        api_token.id, api_token.token_hash[:15] if api_token.token_hash else None)
-            try:
-                match = bcrypt.checkpw(
-                    token.encode("utf-8"),
-                    api_token.token_hash.encode("utf-8"),
-                )
-                logger.info("validate_token: token id=%s, match=%s", api_token.id, match)
-            except Exception as e:
-                logger.error("validate_token: checkpw failed for id=%s: %s", api_token.id, e)
-                continue
-
-            if not match:
+            if not bcrypt.checkpw(
+                token.encode("utf-8"),
+                api_token.token_hash.encode("utf-8"),
+            ):
                 continue
 
             # Check expiration
@@ -120,10 +105,8 @@ class APITokenService:
                 "is_superuser": api_token.user.is_superuser,
             }
 
-            logger.info("validate_token: SUCCESS - token id=%s, user_id=%s", api_token.id, api_token.user_id)
             return api_token, user_info
 
-        logger.warning("validate_token: no matching token found")
         return None, None
 
     @staticmethod

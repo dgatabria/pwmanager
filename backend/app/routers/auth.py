@@ -38,12 +38,15 @@ CSRF_TOKEN_COOKIE = "csrf_token"
 async def get_current_user(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Header()] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Dependency to get current user from JWT token.
+    """Dependency to get current user from JWT token or API key.
 
-    Checks the Authorization header first (Bearer token), then falls back
-    to the httpOnly cookie.
+    Authentication strategy:
+    1. If a Bearer token is present (valid or not), use it exclusively.
+    2. If no Bearer header is present, fall back to API-key auth.
+    3. Also checks the httpOnly cookie for session-based auth.
 
     Validates:
     - token_version claim (tv) against the database to prevent session fixation
@@ -53,6 +56,7 @@ async def get_current_user(
     Returns user_id (int).
     Centralized auth function - used by all routers.
     """
+    JWT_COOKIE_NAME = "access_token"
     token = None
 
     # 1. Try Authorization header (Bearer token)
@@ -63,49 +67,63 @@ async def get_current_user(
     if not token and request.cookies:
         token = request.cookies.get(JWT_COOKIE_NAME)
 
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    try:
-        payload = AuthService.decode_token(token)
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    user_id = payload.get("sub")
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    # Validate token_version to prevent session fixation
-    token_version = payload.get("tv")
-    if token_version is not None:
-        result = await db.execute(
-            select(User).where(User.id == int(user_id))
-        )
-        user = result.scalar_one_or_none()
-        if not user or user.token_version != token_version:
-            raise HTTPException(
-                status_code=401, detail="Token has been revoked"
-            )
-
-    # Check JTI against revoked_tokens to prevent replay of revoked tokens
-    jti = payload.get("jti")
-    if jti:
+    if token:
+        # JWT token found — use it exclusively
         try:
+            payload = AuthService.decode_token(token)
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Validate token_version to prevent session fixation
+        token_version = payload.get("tv")
+        if token_version is not None:
             result = await db.execute(
-                text(
-                    "SELECT 1 FROM revoked_tokens WHERE jti = :jti "
-                    "AND expires_at > NOW()"
-                ).bindparams(jti=jti)
+                select(User).where(User.id == int(user_id))
             )
-            if result.scalar_one_or_none():
+            user = result.scalar_one_or_none()
+            if not user or user.token_version != token_version:
                 raise HTTPException(
                     status_code=401, detail="Token has been revoked"
                 )
-        except Exception:
-            # Table may not exist — skip revocation check
-            pass
 
-    return int(user_id)
+        # Check JTI against revoked_tokens to prevent replay of revoked tokens
+        jti = payload.get("jti")
+        if jti:
+            try:
+                result = await db.execute(
+                    text(
+                        "SELECT 1 FROM revoked_tokens WHERE jti = :jti "
+                        "AND expires_at > NOW()"
+                    ).bindparams(jti=jti)
+                )
+                if result.scalar_one_or_none():
+                    raise HTTPException(
+                        status_code=401, detail="Token has been revoked"
+                    )
+            except Exception:
+                # Table may not exist — skip revocation check
+                pass
+
+        return int(user_id)
+
+    # No JWT — fall back to API key auth
+    api_key = x_api_key or (
+        authorization.split(" ", 1)[1]
+        if authorization and authorization.startswith("ApiKey ")
+        else None
+    )
+
+    if api_key:
+        from app.services.api_token import APITokenService
+        api_token, user_info = await APITokenService.validate_token(db, api_key)
+        if api_token:
+            return api_token.user_id
+
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 def _extract_token(request: Request, authorization: str | None) -> str | None:
@@ -121,74 +139,98 @@ def _extract_token(request: Request, authorization: str | None) -> str | None:
 async def get_current_user_info(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Header()] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Dependency to get full current user info from JWT token.
+    """Dependency to get full current user info from JWT token or API key.
 
-    Checks the Authorization header first (Bearer token), then falls back
-    to the httpOnly cookie.
+    Authentication strategy:
+    1. If a Bearer token is present (valid or not), use it exclusively.
+       This prevents an attacker from supplying an invalid JWT that falls
+       through to API-key auth and potentially authenticates as a different user.
+    2. If no Bearer header is present, fall back to API-key auth (X-Api-Key header).
+    3. Also checks the httpOnly cookie for session-based auth.
 
-    Returns user dict with id, username, email, is_superuser.
+    Returns user dict with id, username, email, is_superuser, is_active.
     Centralized auth function - used by all routers.
     """
+    JWT_COOKIE_NAME = "access_token"
+
+    # Try JWT first (Bearer header or cookie)
     token = _extract_token(request, authorization)
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
 
-    try:
-        payload = AuthService.decode_token(token)
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    user_id = payload.get("sub")
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    # Validate token_version to prevent session fixation
-    token_version = payload.get("tv")
-    if token_version is not None:
-        result = await db.execute(
-            select(User).where(User.id == int(user_id))
-        )
-        user = result.scalar_one_or_none()
-        if not user or user.token_version != token_version:
-            raise HTTPException(
-                status_code=401, detail="Token has been revoked"
-            )
-
-    # Check JTI against revoked_tokens to prevent replay of revoked tokens
-    jti = payload.get("jti")
-    if jti:
+    if token:
+        # JWT token found — use it exclusively
         try:
+            payload = AuthService.decode_token(token)
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Validate token_version to prevent session fixation
+        token_version = payload.get("tv")
+        if token_version is not None:
             result = await db.execute(
-                text(
-                    "SELECT 1 FROM revoked_tokens WHERE jti = :jti "
-                    "AND expires_at > NOW()"
-                ).bindparams(jti=jti)
+                select(User).where(User.id == int(user_id))
             )
-            if result.scalar_one_or_none():
+            user = result.scalar_one_or_none()
+            if not user or user.token_version != token_version:
                 raise HTTPException(
                     status_code=401, detail="Token has been revoked"
                 )
-        except Exception:
-            # Table may not exist — skip revocation check
-            pass
 
-    user_id = int(user_id)
+        # Check JTI against revoked_tokens to prevent replay of revoked tokens
+        jti = payload.get("jti")
+        if jti:
+            try:
+                result = await db.execute(
+                    text(
+                        "SELECT 1 FROM revoked_tokens WHERE jti = :jti "
+                        "AND expires_at > NOW()"
+                    ).bindparams(jti=jti)
+                )
+                if result.scalar_one_or_none():
+                    raise HTTPException(
+                        status_code=401, detail="Token has been revoked"
+                    )
+            except Exception:
+                # Table may not exist — skip revocation check
+                pass
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
+        user_id = int(user_id)
 
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
 
-    return {
-        "id": user.id,
-        "username": user.username,
-        "email": user.email,
-        "is_superuser": user.is_superuser,
-        "is_active": user.is_active,
-    }
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "is_superuser": user.is_superuser,
+            "is_active": user.is_active,
+        }
+
+    # No JWT — fall back to API key auth
+    api_key = x_api_key or (
+        authorization.split(" ", 1)[1]
+        if authorization and authorization.startswith("ApiKey ")
+        else None
+    )
+
+    if api_key:
+        from app.services.api_token import APITokenService
+        api_token, user_info = await APITokenService.validate_token(db, api_key)
+        if api_token:
+            user_info["is_active"] = True
+            return user_info
+
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 UserDep = Annotated[int, Depends(get_current_user)]
