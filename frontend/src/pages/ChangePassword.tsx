@@ -25,7 +25,7 @@ export default function ChangePassword() {
     }
 
     try {
-      await api.post('/auth/change-password', {
+      await api.post('/api/auth/change-password', {
         new_password: newPassword,
       })
       setSuccess('Contraseña actualizada correctamente')
