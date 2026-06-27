@@ -143,7 +143,7 @@ export default function Dashboard() {
     setEditGroupName(group.name)
     setEditGroupDesc(group.description ?? '')
     try {
-      const detail = await api.get(`/api/secret-groups/${group.id}`)
+      const detail = await api.get<SecretGroup>(`/api/secret-groups/${group.id}`)
       setEditGroupMemberIds(detail.data.group_ids ?? [])
     } catch {
       setEditGroupMemberIds([])
