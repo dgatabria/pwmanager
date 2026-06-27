@@ -48,6 +48,7 @@ class UserResponse(BaseModel):
     is_active: bool
     is_superuser: bool
     personal_group_id: int | None
+    password_change_required: bool = False
     created_at: str
 
     class Config:

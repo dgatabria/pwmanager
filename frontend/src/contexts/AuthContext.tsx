@@ -54,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         is_superuser: data.is_superuser,
         personal_group_id: data.personal_group_id ?? null,
       })
+      setPasswordChangeRequired(data.password_change_required ?? false)
     } catch {
       setUser(null)
     } finally {

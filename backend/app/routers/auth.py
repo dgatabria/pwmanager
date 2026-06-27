@@ -404,6 +404,7 @@ async def get_me(
         is_active=user.is_active,
         is_superuser=user.is_superuser,
         personal_group_id=user.personal_group_id,
+        password_change_required=user.password_change_required,
         created_at=str(user.created_at),
     )
 
