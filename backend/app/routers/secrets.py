@@ -287,6 +287,7 @@ async def get_secret(
         request=request,
         details=f"User {user_id} viewed decrypted secret '{secret.title}' (ID: {secret_id})",
     )
+    await db.commit()
 
     return SecretViewResponse(
         id=secret.id,
@@ -343,10 +344,8 @@ async def create_secret(
         owner_id=user_id,
     )
     db.add(secret)
-    await db.commit()
-    await db.refresh(secret)
 
-    # Audit: secret creation
+    # Audit: secret creation (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_SECRET,
@@ -356,6 +355,9 @@ async def create_secret(
         request=request,
         details=f"Created secret '{secret_data.title}' (type={secret_data.secret_type})",
     )
+
+    await db.commit()
+    await db.refresh(secret)
 
     group_name = secret.group.name if secret.group else None
 
@@ -413,10 +415,7 @@ async def update_secret(
         changes.append(f"url={secret_data.url}")
         secret.url = secret_data.url
 
-    await db.commit()
-    await db.refresh(secret)
-
-    # Audit: secret update
+    # Audit: secret update (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_SECRET,
@@ -426,6 +425,9 @@ async def update_secret(
         request=request,
         details=f"Updated secret '{secret.title}': {', '.join(changes)}",
     )
+
+    await db.commit()
+    await db.refresh(secret)
 
     return SecretResponse(
         id=secret.id,
@@ -466,9 +468,8 @@ async def delete_secret(
         raise HTTPException(status_code=404, detail="Secret not found")
 
     secret.is_active = False
-    await db.commit()
 
-    # Audit: secret deletion
+    # Audit: secret deletion (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_SECRET,
@@ -478,6 +479,8 @@ async def delete_secret(
         request=request,
         details=f"Soft-deleted secret '{secret.title}'",
     )
+
+    await db.commit()
 
 
 @router.post("/ssh-key/generate", response_model=SSHKeyGenerateResponse)
@@ -529,6 +532,7 @@ async def generate_ssh_key(
         request=request,
         details=f"Generated SSH key (length={request_body.key_length}, comment='{request_body.comment}', fingerprint={fingerprint})",
     )
+    await db.commit()
 
     return SSHKeyGenerateResponse(
         public_key=public_key,
@@ -570,6 +574,7 @@ async def get_secret_masked(
         request=request,
         details=f"User {user_id} viewed masked secret '{secret.title}' (ID: {secret_id})",
     )
+    await db.commit()
 
     return SecretMaskedResponse(
         id=secret.id,
@@ -624,6 +629,7 @@ async def reveal_secret(
         request=request,
         details=f"User {user_id} revealed (decrypted) secret '{secret.title}' (ID: {secret_id})",
     )
+    await db.commit()
 
     return SecretRevealResponse(
         id=secret.id,
@@ -676,6 +682,7 @@ async def copy_secret(
         request=request,
         details=f"User {user_id} copied (decrypted) secret '{secret.title}' (ID: {secret_id}) to clipboard",
     )
+    await db.commit()
 
     return SecretCopyResponse(
         id=secret.id,

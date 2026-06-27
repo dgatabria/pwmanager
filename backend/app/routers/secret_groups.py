@@ -270,9 +270,7 @@ async def create_secret_group(
             )
             db.add(sgm)
 
-    await db.commit()
-
-    # Audit: secret group creation
+    # Audit: secret group creation (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_SECRET_GROUP,
@@ -282,6 +280,8 @@ async def create_secret_group(
         request=request,
         details=f"Created secret group '{group_data.name}' (parent={group_data.parent_id})",
     )
+
+    await db.commit()
 
     return SecretGroupResponse(
         id=sg.id,
@@ -442,10 +442,7 @@ async def update_secret_group(
             ))
         changes.append(f"member_groups={group_data.member_group_ids}")
 
-    await db.commit()
-    await db.refresh(sg, ["owner"])
-
-    # Audit: secret group update
+    # Audit: secret group update (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_SECRET_GROUP,
@@ -455,6 +452,9 @@ async def update_secret_group(
         request=request,
         details=f"Updated secret group '{sg.name}': {', '.join(changes)}",
     )
+
+    await db.commit()
+    await db.refresh(sg, ["owner"])
 
     return SecretGroupResponse(
         id=sg.id,
@@ -515,9 +515,8 @@ async def delete_secret_group(
 
     # Delete the group itself
     await db.delete(sg)
-    await db.commit()
 
-    # Audit: secret group permanent deletion
+    # Audit: secret group permanent deletion (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_SECRET_GROUP,
@@ -527,6 +526,8 @@ async def delete_secret_group(
         request=request,
         details=f"Permanently deleted secret group '{sg.name}' (id={group_id}) with {len(secrets)} secret(s)",
     )
+
+    await db.commit()
 
 
 @router.post("/{group_id}/access", status_code=200)
@@ -595,9 +596,7 @@ async def update_group_access(
         )
         db.add(sgm)
 
-    await db.commit()
-
-    # Audit: secret group access update
+    # Audit: secret group access update (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_SECRET_GROUP,
@@ -607,6 +606,8 @@ async def update_group_access(
         request=request,
         details=f"Updated access for secret group '{sg.name}': members={access_data.member_group_ids}",
     )
+
+    await db.commit()
 
 
 @router.post("/{group_id}/groups/{user_group_id}", status_code=204)
@@ -668,9 +669,8 @@ async def add_group_to_secret_group(
         group_id=user_group_id,
     )
     db.add(sgm)
-    await db.commit()
 
-    # Audit: add group to secret group
+    # Audit: add group to secret group (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_SECRET_GROUP,
@@ -680,6 +680,8 @@ async def add_group_to_secret_group(
         request=request,
         details=f"Added group (id={user_group_id}) to secret group (id={group_id})",
     )
+
+    await db.commit()
 
 
 @router.delete("/{group_id}/groups/{user_group_id}", status_code=204)
@@ -713,9 +715,8 @@ async def remove_group_from_secret_group(
     sgm = result.scalar_one_or_none()
     if sgm:
         await db.delete(sgm)
-        await db.commit()
 
-        # Audit: remove group from secret group
+        # Audit: remove group from secret group (before commit so audit is part of same transaction)
         await AuditService.log_crud(
             db,
             AuditService.ENTITY_SECRET_GROUP,
@@ -725,3 +726,5 @@ async def remove_group_from_secret_group(
             request=request,
             details=f"Removed group (id={user_group_id}) from secret group (id={group_id})",
         )
+
+        await db.commit()

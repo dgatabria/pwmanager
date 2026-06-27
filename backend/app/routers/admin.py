@@ -160,10 +160,7 @@ async def admin_create_user(
     
     # Link user to their personal group
     user.personal_group_id = personal_group.id
-    await db.commit()
-    await db.refresh(user)
-    
-    # Audit: user creation
+    # Audit: user creation (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_USER,
@@ -173,6 +170,9 @@ async def admin_create_user(
         request=request,
         details=f"Created user '{user_data.username}' (email={user_data.email}, superuser={user_data.is_superuser})",
     )
+
+    await db.commit()
+    await db.refresh(user)
     
     return UserResponse(
         id=user.id,
@@ -229,10 +229,7 @@ async def admin_update_user(
         changes.append(f"is_active={user_data.is_active}")
         user.is_active = user_data.is_active
     
-    await db.commit()
-    await db.refresh(user)
-    
-    # Audit: user update
+    # Audit: user update (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_USER,
@@ -242,6 +239,9 @@ async def admin_update_user(
         request=request,
         details=f"Updated user '{user.username}': {', '.join(changes)}",
     )
+
+    await db.commit()
+    await db.refresh(user)
     
     return UserResponse(
         id=user.id,
@@ -285,9 +285,8 @@ async def admin_reset_password(
     
     hashed = SecurityUtils.hash_password(password_request.new_password)
     user.hashed_password = hashed
-    await db.commit()
     
-    # Audit: password reset
+    # Audit: password reset (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_USER,
@@ -297,6 +296,8 @@ async def admin_reset_password(
         request=request,
         details=f"Reset password for user '{user.username}'",
     )
+    
+    await db.commit()
     
     return {
         "message": "Password reset successfully",
@@ -330,10 +331,8 @@ async def admin_toggle_active(
     
     new_status = not user.is_active
     user.is_active = new_status
-    await db.commit()
-    await db.refresh(user)
     
-    # Audit: toggle active
+    # Audit: toggle active (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_USER,
@@ -343,6 +342,9 @@ async def admin_toggle_active(
         request=request,
         details=f"Toggled user '{user.username}' to {'active' if new_status else 'inactive'}",
     )
+    
+    await db.commit()
+    await db.refresh(user)
     
     return UserResponse(
         id=user.id,
@@ -415,9 +417,8 @@ async def admin_delete_user(
     # Soft-delete: mark as deleted instead of permanent removal
     user.is_deleted = True
     user.is_active = False
-    await db.commit()
     
-    # Audit: user deletion
+    # Audit: user deletion (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_USER,
@@ -463,9 +464,8 @@ async def admin_add_user_to_group(
     
     ug = UserGroup(user_id=user_id, group_id=group_id)
     db.add(ug)
-    await db.commit()
     
-    # Audit: add user to group
+    # Audit: add user to group (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_USER,
@@ -475,6 +475,8 @@ async def admin_add_user_to_group(
         request=request,
         details=f"Added user '{user.username}' to group '{group.name}' (id={group_id})",
     )
+    
+    await db.commit()
 
 
 @router.delete("/users/{user_id}/groups/{group_id}", status_code=204)
@@ -496,9 +498,8 @@ async def admin_remove_user_from_group(
     ug = result.scalar_one_or_none()
     if ug:
         await db.delete(ug)
-        await db.commit()
         
-        # Audit: remove user from group
+        # Audit: remove user from group (before commit so audit is part of same transaction)
         await AuditService.log_crud(
             db,
             AuditService.ENTITY_USER,
@@ -508,6 +509,8 @@ async def admin_remove_user_from_group(
             request=request,
             details=f"Removed user (id={user_id}) from group (id={group_id})",
         )
+        
+        await db.commit()
 
 
 # ─── Group Administration ──────────────────────────────────────────
@@ -559,10 +562,8 @@ async def admin_create_group(
         description=group_data.description,
     )
     db.add(group)
-    await db.commit()
-    await db.refresh(group)
     
-    # Audit: group creation
+    # Audit: group creation (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_GROUP,
@@ -572,6 +573,9 @@ async def admin_create_group(
         request=request,
         details=f"Created group '{group_data.name}' (description={group_data.description})",
     )
+    
+    await db.commit()
+    await db.refresh(group)
     
     return GroupResponse(
         id=group.id,
@@ -617,10 +621,7 @@ async def admin_update_group(
         changes.append(f"is_active={group_data.is_active}")
         group.is_active = group_data.is_active
     
-    await db.commit()
-    await db.refresh(group)
-    
-    # Audit: group update
+    # Audit: group update (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_GROUP,
@@ -630,6 +631,9 @@ async def admin_update_group(
         request=request,
         details=f"Updated group '{group.name}': {', '.join(changes)}",
     )
+    
+    await db.commit()
+    await db.refresh(group)
     
     return GroupResponse(
         id=group.id,
@@ -656,9 +660,8 @@ async def admin_delete_group(
         raise HTTPException(status_code=404, detail="Group not found")
     
     await db.delete(group)
-    await db.commit()
     
-    # Audit: group deletion
+    # Audit: group deletion (before commit so audit is part of same transaction)
     await AuditService.log_crud(
         db,
         AuditService.ENTITY_GROUP,
@@ -668,6 +671,8 @@ async def admin_delete_group(
         request=request,
         details=f"Deleted group '{group.name}' (id={group_id})",
     )
+    
+    await db.commit()
 
 
 # ─── Authentication Method Configuration ────────────────────────────

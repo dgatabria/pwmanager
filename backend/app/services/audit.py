@@ -98,7 +98,11 @@ class AuditService:
         request: Request,
         details: str | None = None,
     ) -> AuditLog:
-        """Create an audit log entry for a secret access event."""
+        """Create an audit log entry for a secret access event.
+
+        NOTE: This method does NOT commit. The caller must commit the
+        audit entry as part of its own transaction to ensure atomicity.
+        """
         audit_entry = AuditLog(
             user_id=user_id,
             event_type=event_type,
@@ -109,7 +113,7 @@ class AuditService:
             timestamp=datetime.now(timezone.utc),
         )
         db.add(audit_entry)
-        await db.commit()
+        await db.flush()
         await db.refresh(audit_entry)
         return audit_entry
 
@@ -124,6 +128,9 @@ class AuditService:
         details: str | None = None,
     ) -> AuditLog:
         """Create an audit log entry for a generic CRUD operation.
+
+        NOTE: This method does NOT commit. The caller must commit the
+        audit entry as part of its own transaction to ensure atomicity.
 
         Args:
             entity_type: One of ENTITY_USER, ENTITY_GROUP, ENTITY_SECRET,
@@ -151,7 +158,7 @@ class AuditService:
             timestamp=datetime.now(timezone.utc),
         )
         db.add(audit_entry)
-        await db.commit()
+        await db.flush()
         await db.refresh(audit_entry)
         return audit_entry
 
