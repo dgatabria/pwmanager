@@ -75,7 +75,7 @@ class APITokenService:
         """
         result = await db.execute(
             select(APIToken)
-            .where(APIToken.is_active == True)
+            .where(APIToken.is_active == 1)
         )
         api_tokens = result.scalars().all()
 
