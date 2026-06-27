@@ -144,7 +144,6 @@ async def admin_create_user(
         is_superuser=user_data.is_superuser,
     )
     db.add(user)
-    await db.flush()
     
     # Create personal secret group for the new user
     personal_group = SecretGroup(
@@ -156,9 +155,8 @@ async def admin_create_user(
         is_active=True,
     )
     db.add(personal_group)
-    await db.flush()
     
-    # Link user to their personal group
+    # Link user to their personal group before flushing
     user.personal_group_id = personal_group.id
     await db.commit()
     await db.refresh(user)
