@@ -38,8 +38,8 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     # Foreign key to this user's personal secret group
-    personal_group_id: Mapped[int] = mapped_column(
-        ForeignKey("secret_groups.id"), nullable=False
+    personal_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("secret_groups.id"), nullable=True
     )
 
     # Relationships
