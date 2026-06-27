@@ -139,10 +139,16 @@ export default function Dashboard() {
   const [editGroupDesc, setEditGroupDesc] = useState('')
   const [editGroupMemberIds, setEditGroupMemberIds] = useState<number[]>([])
 
-  const handleEditSecretGroup = (group: SecretGroup) => {
+  const handleEditSecretGroup = async (group: SecretGroup) => {
     setEditGroupName(group.name)
     setEditGroupDesc(group.description ?? '')
-    setEditGroupMemberIds(group.group_ids ?? [])
+    try {
+      const detail = await api.get(`/api/secret-groups/${group.id}`)
+      setEditGroupMemberIds(detail.data.group_ids ?? [])
+    } catch {
+      setEditGroupMemberIds([])
+    }
+    setSelectedGroupId(group.id)
     setShowEditGroupModal(true)
   }
 
