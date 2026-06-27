@@ -5,6 +5,9 @@ Authorization model:
 - The owner (creator) of a secret group can modify, delete, and manage access.
 - Access is granted to user groups via the secret_group_members junction table.
 - The list endpoint returns groups the user can access (owned + shared).
+- Owner-based access control: users can always access groups they own,
+  regardless of group memberships.
+- Non-owner access requires explicit membership via SecretGroupMember.
 """
 
 from typing import Annotated
@@ -12,6 +15,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.group import Group
@@ -62,6 +66,54 @@ async def _require_owner(group_id: int, current_user_id: int, db: AsyncSession):
     return sg
 
 
+async def _require_group_access(
+    group_id: int,
+    user_id: int,
+    db: AsyncSession,
+    permission: str = "read",
+):
+    """Verify the current user has access to a secret group.
+
+    Access is granted if:
+    1. The user is the owner of the group, OR
+    2. A user group the user belongs to has been granted access via
+       the SecretGroupMember junction table.
+
+    Raises HTTPException(403) if access is denied.
+    Raises HTTPException(404) if the group does not exist.
+    """
+    result = await db.execute(
+        select(SecretGroup)
+        .where(SecretGroup.id == group_id, SecretGroup.is_active == True)
+        .options(selectinload(SecretGroup.owner))
+    )
+    sg = result.scalar_one_or_none()
+
+    if not sg:
+        raise HTTPException(status_code=404, detail="Secret group not found")
+
+    # Owner always has full access
+    if sg.owner_id == user_id:
+        return sg
+
+    # Check access via group memberships
+    result = await db.execute(
+        select(SecretGroupMember)
+        .where(
+            SecretGroupMember.secret_group_id == group_id,
+            SecretGroupMember.permission == permission,
+        )
+        .join(UserGroup, UserGroup.group_id == SecretGroupMember.group_id)
+        .where(UserGroup.user_id == user_id)
+    )
+    access = result.scalars().first()
+
+    if access is None:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return sg
+
+
 @router.get("")
 async def list_secret_groups(
     user_id: UserDep,
@@ -70,39 +122,47 @@ async def list_secret_groups(
 ):
     """List all secret groups the user can access (owned + shared).
 
+    Returns groups where:
+    1. The user is the owner (owner-based access control), OR
+    2. A user group the user belongs to has been granted read access
+       via the SecretGroupMember junction table.
+
     Personal groups are returned first, followed by shared groups.
     """
-    # Get user group memberships
-    result = await db.execute(
-        select(UserGroup.group_id).where(UserGroup.user_id == user_id)
-    )
-    user_group_ids = [row[0] for row in result.all()]
-
-    # Build query: owned groups OR groups shared with user's groups (read access only)
-    conditions = [SecretGroup.owner_id == user_id]
-    if user_group_ids:
-        conditions.append(
-            SecretGroup.id.in_(
-                select(SecretGroupMember.secret_group_id).where(
-                    SecretGroupMember.group_id.in_(user_group_ids),
-                    SecretGroupMember.permission == "read",
-                )
-            )
+    # Build a single query that returns only groups the user can access:
+    # 1. Groups owned by the user
+    # 2. Groups shared with user's groups (read access only)
+    accessible_group_ids = (
+        select(SecretGroup.id)
+        .where(
+            SecretGroup.is_active == True,
+            or_(
+                SecretGroup.owner_id == user_id,
+                SecretGroup.id.in_(
+                    select(SecretGroupMember.secret_group_id).where(
+                        SecretGroupMember.permission == "read"
+                    ).join(
+                        UserGroup,
+                        UserGroup.group_id == SecretGroupMember.group_id,
+                    ).where(
+                        UserGroup.user_id == user_id,
+                    )
+                ),
+            ),
         )
+    )
 
-    query = select(SecretGroup).where(
-        SecretGroup.is_active == True,
-        or_(*conditions),
+    query = (
+        select(SecretGroup)
+        .where(SecretGroup.id.in_(accessible_group_ids))
+        .order_by(
+            SecretGroup.is_personal.desc(),
+            SecretGroup.name,
+        )
     )
 
     if group_id:
         query = query.where(SecretGroup.group_id == group_id)
-
-    # Order: personal groups first, then by name
-    query = query.order_by(
-        SecretGroup.is_personal.desc(),
-        SecretGroup.name,
-    )
 
     result = await db.execute(query)
     groups = result.scalars().all()
@@ -243,41 +303,16 @@ async def get_secret_group_detail(
     user_id: UserDep,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get secret group details (must be owner or have access)."""
-    result = await db.execute(
-        select(SecretGroup).where(SecretGroup.id == group_id)
-    )
-    sg = result.scalar_one_or_none()
+    """Get secret group details (must be owner or have access).
 
-    if not sg:
-        raise HTTPException(status_code=404, detail="Secret group not found")
-
-    # Check access: owner or shared with user's groups
-    result = await db.execute(
-        select(UserGroup.group_id).where(UserGroup.user_id == user_id)
-    )
-    user_group_ids = [row[0] for row in result.all()]
-
-    is_owner = sg.owner_id == user_id
-    has_access = is_owner or (
-        user_group_ids and
-        sg.id in [
-            row[0] for row in await db.execute(
-                select(SecretGroupMember.secret_group_id).where(
-                    SecretGroupMember.group_id.in_(user_group_ids),
-                    SecretGroupMember.permission == "read",
-                )
-            ).all()
-        ]
-    )
-
-    if not has_access:
-        raise HTTPException(status_code=403, detail="Access denied")
+    Access is enforced via _require_group_access which checks:
+    1. User is the owner, OR
+    2. A user group the user belongs to has explicit read access
+    """
+    sg = await _require_group_access(group_id, user_id, db, permission="read")
 
     # Get owner info
-    result = await db.execute(select(User).where(User.id == sg.owner_id))
-    owner = result.scalar_one_or_none()
-    owner_username = owner.username if owner else ""
+    owner_username = sg.owner.username if sg.owner else ""
 
     # Get associated user groups
     result = await db.execute(
@@ -294,10 +329,9 @@ async def get_secret_group_detail(
 
     # Count secrets
     result = await db.execute(
-        select(SecretGroup).where(SecretGroup.id == group_id)
+        select(Secret).where(Secret.group_id == group_id, Secret.is_active == True)
     )
-    sg2 = result.scalar_one_or_none()
-    secret_count = len(sg2.secrets) if sg2 else 0
+    secret_count = len(result.scalars().all())
 
     return SecretGroupDetail(
         id=sg.id,
@@ -330,6 +364,9 @@ async def update_secret_group(
     be edited freely.
 
     Authorization: the owner may only share with groups they belong to.
+
+    The member_group_ids field replaces the current access list entirely.
+    An empty list makes the group private (owner-only).
     """
     sg = await _require_owner(group_id, current_user_id, db)
 
@@ -345,6 +382,8 @@ async def update_secret_group(
         )
 
     changes: list[str] = []
+
+    # ── Update basic fields ──────────────────────────────────────────
     if group_data.name is not None:
         sg.name = group_data.name
         changes.append(f"name={group_data.name}")
@@ -355,54 +394,56 @@ async def update_secret_group(
         sg.is_active = group_data.is_active
         changes.append(f"is_active={group_data.is_active}")
 
-    # Update member access if provided
+    # ── Update member access (owner-only permission management) ──────
     if group_data.member_group_ids is not None:
-        # Get the owner's own group memberships
-        result = await db.execute(
-            select(UserGroup.group_id).where(UserGroup.user_id == current_user_id)
-        )
-        owner_group_ids = {row[0] for row in result.all()}
+        new_member_ids = set(group_data.member_group_ids)
 
-        # Validate: must exist, be active, AND belong to the owner
-        result = await db.execute(
-            select(Group.id).where(
-                Group.id.in_(group_data.member_group_ids),
-                Group.is_active == True,
+        # Validate each group: must exist, be active, AND belong to the owner
+        if new_member_ids:
+            result = await db.execute(
+                select(Group.id, Group.name).where(
+                    Group.id.in_(new_member_ids),
+                    Group.is_active == True,
+                )
             )
-        )
-        existing_group_ids = {row[0] for row in result.all()}
-        non_existent = set(group_data.member_group_ids) - existing_group_ids
-        not_member = set(group_data.member_group_ids) - owner_group_ids
-        if non_existent or not_member:
-            bad = sorted(non_existent | not_member)
-            reason = []
-            if non_existent:
-                reason.append("non-existent or inactive")
-            if not_member:
-                reason.append("you are not a member of")
-            raise HTTPException(
-                status_code=403,
-                detail=f"Cannot share with groups: {', '.join(str(g) for g in bad)} ({'; '.join(reason)})"
-            )
+            existing = {row[0]: row[1] for row in result.all()}
+            missing = new_member_ids - existing.keys()
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Groups not found or inactive: {', '.join(str(g) for g in sorted(missing))}",
+                )
 
-        # Remove existing memberships
+            # Owner must belong to each group they want to share with
+            result = await db.execute(
+                select(UserGroup.group_id).where(
+                    UserGroup.user_id == current_user_id,
+                    UserGroup.group_id.in_(new_member_ids),
+                )
+            )
+            owner_groups = {row[0] for row in result.all()}
+            unauthorized = new_member_ids - owner_groups
+            if unauthorized:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"You are not a member of: {', '.join(str(g) for g in sorted(unauthorized))}",
+                )
+
+        # Replace all existing memberships atomically
         await db.execute(
             SecretGroupMember.__table__.delete().where(
                 SecretGroupMember.secret_group_id == group_id
             )
         )
-
-        # Add new memberships
         for gid in group_data.member_group_ids:
-            sgm = SecretGroupMember(
+            db.add(SecretGroupMember(
                 secret_group_id=group_id,
                 group_id=gid,
-            )
-            db.add(sgm)
+            ))
         changes.append(f"member_groups={group_data.member_group_ids}")
 
     await db.commit()
-    await db.refresh(sg)
+    await db.refresh(sg, ["owner"])
 
     # Audit: secret group update
     await AuditService.log_crud(

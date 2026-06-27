@@ -46,13 +46,25 @@ async def check_secret_access(
     db: AsyncSession,
     permission: str = "read",
 ):
-    """Check if user has access to a secret via their groups.
+    """Check if user has access to a secret.
+
+    Access is granted if:
+    1. The user is the owner of the secret, OR
+    2. The user's groups have been granted the required permission
+       on the secret's group via the SecretGroupMember junction table.
 
     Args:
         secret_id: The secret ID to check
         user_id: The user ID
         db: Database session
         permission: Required permission level ("read" or "write")
+
+    Returns:
+        The Secret object if access is granted.
+
+    Raises:
+        HTTPException(404): Secret not found
+        HTTPException(403): Access denied
     """
     result = await db.execute(
         select(Secret)
@@ -64,41 +76,24 @@ async def check_secret_access(
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
 
-    # Check if user is owner (owner always has full access)
+    # Owner always has full access regardless of group memberships
     if secret.owner_id == user_id:
         return secret
 
-    # Check access via secret groups and their associated user groups
+    # Check access via group memberships on the secret's group
     result = await db.execute(
         select(SecretGroupMember)
-        .join(SecretGroup, SecretGroupMember.secret_group_id == SecretGroup.id)
-        .join(UserGroup, UserGroup.group_id == SecretGroupMember.group_id)
         .where(
-            UserGroup.user_id == user_id,
-            SecretGroup.id == secret.group_id,
-            SecretGroupMember.permission == "read",
+            SecretGroupMember.secret_group_id == secret.group_id,
+            SecretGroupMember.permission == permission,
         )
+        .join(UserGroup, UserGroup.group_id == SecretGroupMember.group_id)
+        .where(UserGroup.user_id == user_id)
     )
-    read_access = result.scalars().all()
+    access = result.scalars().first()
 
-    if permission == "read" and read_access:
+    if access is not None:
         return secret
-
-    # Check for write access
-    if permission == "write":
-        result = await db.execute(
-            select(SecretGroupMember)
-            .join(SecretGroup, SecretGroupMember.secret_group_id == SecretGroup.id)
-            .join(UserGroup, UserGroup.group_id == SecretGroupMember.group_id)
-            .where(
-                UserGroup.user_id == user_id,
-                SecretGroup.id == secret.group_id,
-                SecretGroupMember.permission == "write",
-            )
-        )
-        write_access = result.scalars().all()
-        if write_access:
-            return secret
 
     raise HTTPException(status_code=403, detail="Access denied")
 
@@ -109,23 +104,25 @@ async def check_secret_group_access(
     db: AsyncSession,
     permission: str = "read",
 ):
-    """Check if user has write access to a secret group.
+    """Check if user has access to a secret group.
 
     A user has access if they are the group owner or if one of their
-    user groups has been granted access via SecretGroupMember.
+    user groups has been granted the requested permission via SecretGroupMember.
 
+    Raises HTTPException(404) if the group does not exist.
     Raises HTTPException(403) if access is denied.
     """
     result = await db.execute(
         select(SecretGroup)
         .where(SecretGroup.id == secret_group_id, SecretGroup.is_active == True)
+        .options(selectinload(SecretGroup.owner))
     )
     sg = result.scalar_one_or_none()
 
     if not sg:
         raise HTTPException(status_code=404, detail="Secret group not found")
 
-    # Owner always has full access
+    # Owner always has full access regardless of group memberships
     if sg.owner_id == user_id:
         return sg
 
