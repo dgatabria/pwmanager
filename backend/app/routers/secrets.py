@@ -535,6 +535,7 @@ async def generate_ssh_key(
     await db.commit()
 
     return SSHKeyGenerateResponse(
+        private_key=private_key,
         public_key=public_key,
         fingerprint=fingerprint,
         key_length=request_body.key_length,

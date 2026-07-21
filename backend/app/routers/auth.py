@@ -104,6 +104,8 @@ async def get_current_user(
                     raise HTTPException(
                         status_code=401, detail="Token has been revoked"
                     )
+            except HTTPException:
+                raise
             except Exception:
                 # Table may not exist — skip revocation check
                 pass
@@ -196,6 +198,8 @@ async def get_current_user_info(
                     raise HTTPException(
                         status_code=401, detail="Token has been revoked"
                     )
+            except HTTPException:
+                raise
             except Exception:
                 # Table may not exist — skip revocation check
                 pass

@@ -140,7 +140,7 @@ def cmd_create_secret(client, args):
         key_length = args.key_length
     try:
         result = client.create_secret(
-            title=title, secret_type=secret_type, encrypted_data=encrypted_data,
+            title=title, secret_type=secret_type, plaintext_data=encrypted_data,
             group_id=group_id, description=description, username=username,
             url=url, key_length=key_length,
         )
@@ -180,7 +180,7 @@ def cmd_create_secret_ssh(client, args):
     title = f"SSH Key - {response['fingerprint'][-12:]}"
     try:
         result = client.create_secret(
-            title=title, secret_type="ssh_key", encrypted_data=response["private_key"],
+            title=title, secret_type="ssh_key", plaintext_data=response["private_key"],
             group_id=group_id, key_length=key_length,
         )
         print_success(f"SSH key saved (ID: {result['id']})")

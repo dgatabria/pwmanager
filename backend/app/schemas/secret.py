@@ -130,9 +130,8 @@ class SSHKeyGenerateRequest(BaseModel):
 
 
 class SSHKeyGenerateResponse(BaseModel):
-    """SSH key pair response. Only the public key and metadata are returned.
-    The private key is never transmitted to prevent exposure in logs,
-    browser history, or network traffic."""
+    """SSH key pair response containing generated private and public key."""
+    private_key: str
     public_key: str
     fingerprint: str
     key_length: int

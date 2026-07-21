@@ -286,6 +286,13 @@ class BackupService:
     @classmethod
     async def restore_backup(cls, backup_id: str) -> dict:
         """Restore from a backup."""
+        import re
+        if not re.match(r"^[a-zA-Z0-9_-]+$", backup_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid backup ID format"
+            )
+
         backup_dir = cls._ensure_backup_dir()
         backup_file = backup_dir / f"{backup_id}.tgz"
 
@@ -300,9 +307,29 @@ class BackupService:
         temp_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            # 1. Extract the backup
+            # 1. Extract the backup with path traversal / tar slip prevention
             with tarfile.open(backup_file, "r:gz") as tar:
-                tar.extractall(path=str(temp_dir))
+                resolved_temp_dir = temp_dir.resolve()
+                for member in tar.getmembers():
+                    # Validate that destination path stays strictly inside temp_dir
+                    member_target = (temp_dir / member.name).resolve()
+                    try:
+                        member_target.relative_to(resolved_temp_dir)
+                    except ValueError:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Security error: Backup archive contains illegal path traversal '{member.name}'"
+                        )
+                    if member.issym() or member.islnk() or member.isdev():
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Security error: Backup archive contains illegal file type for '{member.name}'"
+                        )
+
+                if hasattr(tarfile, 'data_filter'):
+                    tar.extractall(path=str(temp_dir), filter='data')
+                else:
+                    tar.extractall(path=str(temp_dir))
 
             # 2. Verify metadata
             metadata_path = temp_dir / "metadata.json"

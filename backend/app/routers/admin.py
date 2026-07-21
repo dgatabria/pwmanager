@@ -1099,13 +1099,12 @@ async def restore_backup(
     """Restore the database and encryption keys from a backup."""
     await require_superuser(current_user_id, db)
 
-    # Optionally enforce maintenance mode for safety
-    # in_maintenance = await is_maintenance_mode()
-    # if not in_maintenance:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_423_LOCKED,
-    #         detail="Restore can only be performed during maintenance mode",
-    #     )
+    import re
+    if not re.match(r"^[a-zA-Z0-9_-]+$", backup_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid backup ID format",
+        )
 
     result = await BackupService.restore_backup(backup_id)
     return BackupRestoreResponse(**result)

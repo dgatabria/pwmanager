@@ -1,5 +1,6 @@
 """API Token management service."""
 
+import hashlib
 import secrets
 import bcrypt
 from datetime import datetime, timezone, timedelta
@@ -24,15 +25,12 @@ class APITokenService:
 
     @staticmethod
     def hash_token(token: str) -> str:
-        """Hash a token for storage (bcrypt).
+        """Hash a token for storage using SHA-256.
 
-        bcrypt is used instead of SHA-256 because it is computationally
-        expensive, making offline brute-force attacks significantly harder.
+        SHA-256 enables fast O(1) indexed database lookups while ensuring
+        that plaintext tokens are never stored at rest.
         """
-        return bcrypt.hashpw(
-            token.encode("utf-8"),
-            bcrypt.gensalt(rounds=12),
-        ).decode("utf-8")
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     @staticmethod
     async def create_token(
@@ -65,49 +63,63 @@ class APITokenService:
         db: AsyncSession, token: str
     ) -> tuple[APIToken | None, dict | None]:
         """
-        Validate an API token using bcrypt.checkpw.
-
-        Queries all active tokens and verifies each with bcrypt.checkpw.
-        bcrypt includes a random salt, so the token hash cannot be used
-        for deterministic lookups.
+        Validate an API token using deterministic O(1) SHA-256 lookup.
 
         Returns (api_token, user_info) if valid, (None, None) if invalid.
         """
+        token_hash = APITokenService.hash_token(token)
+
+        # 1. Fast O(1) indexed lookup for SHA-256 tokens
         result = await db.execute(
             select(APIToken)
+            .where(APIToken.token_hash == token_hash)
             .where(APIToken.is_active == 1)
         )
-        api_tokens = result.scalars().all()
+        api_token = result.scalar_one_or_none()
 
-        for api_token in api_tokens:
-            if not bcrypt.checkpw(
-                token.encode("utf-8"),
-                api_token.token_hash.encode("utf-8"),
-            ):
-                continue
+        # 2. Backward compatibility fallback for legacy bcrypt tokens
+        if not api_token:
+            result = await db.execute(
+                select(APIToken)
+                .where(APIToken.token_hash.like("$2%"))
+                .where(APIToken.is_active == 1)
+            )
+            legacy_tokens = result.scalars().all()
+            for legacy in legacy_tokens:
+                if bcrypt.checkpw(token.encode("utf-8"), legacy.token_hash.encode("utf-8")):
+                    api_token = legacy
+                    # Upgrade legacy token to SHA-256 on successful use
+                    api_token.token_hash = token_hash
+                    await db.commit()
+                    break
 
-            # Check expiration
-            if api_token.expires_at and datetime.now(timezone.utc) > api_token.expires_at:
-                api_token.is_active = False
-                await db.commit()
-                return None, None
+        if not api_token:
+            return None, None
 
-            # Update last used
-            api_token.last_used_at = datetime.now(timezone.utc)
+        # Check user active status
+        if not api_token.user or not api_token.user.is_active or api_token.user.is_deleted:
+            return None, None
+
+        # Check expiration
+        if api_token.expires_at and datetime.now(timezone.utc) > api_token.expires_at:
+            api_token.is_active = False
             await db.commit()
+            return None, None
 
-            # Get user info
-            user_info = {
-                "id": api_token.user_id,
-                "username": api_token.user.username,
-                "email": api_token.user.email,
-                "full_name": api_token.user.full_name,
-                "is_superuser": api_token.user.is_superuser,
-            }
+        # Update last used
+        api_token.last_used_at = datetime.now(timezone.utc)
+        await db.commit()
 
-            return api_token, user_info
+        # Get user info
+        user_info = {
+            "id": api_token.user_id,
+            "username": api_token.user.username,
+            "email": api_token.user.email,
+            "full_name": api_token.user.full_name,
+            "is_superuser": api_token.user.is_superuser,
+        }
 
-        return None, None
+        return api_token, user_info
 
     @staticmethod
     async def list_user_tokens(
@@ -148,18 +160,28 @@ class APITokenService:
         Recycle an API token: revoke the old one and create a new one.
         Returns (new_plain_token, new_token_record).
         """
-        # Validate old token using bcrypt.checkpw
+        old_hash = APITokenService.hash_token(old_token)
         result = await db.execute(
             select(APIToken)
             .where(APIToken.user_id == user_id)
+            .where(APIToken.token_hash == old_hash)
             .where(APIToken.is_active == True)
         )
         old_api_token = result.scalar_one_or_none()
 
-        if not old_api_token or not bcrypt.checkpw(
-            old_token.encode("utf-8"),
-            old_api_token.token_hash.encode("utf-8"),
-        ):
+        if not old_api_token:
+            result = await db.execute(
+                select(APIToken)
+                .where(APIToken.user_id == user_id)
+                .where(APIToken.token_hash.like("$2%"))
+                .where(APIToken.is_active == True)
+            )
+            for legacy in result.scalars().all():
+                if bcrypt.checkpw(old_token.encode("utf-8"), legacy.token_hash.encode("utf-8")):
+                    old_api_token = legacy
+                    break
+
+        if not old_api_token:
             raise ValueError("Invalid or expired token")
 
         # Revoke old token
@@ -167,7 +189,7 @@ class APITokenService:
         await db.commit()
 
         # Create new token with same name/description
-        new_token, _ = await APITokenService.create_token(
+        new_token, new_record = await APITokenService.create_token(
             db=db,
             user_id=user_id,
             name=name,
@@ -175,4 +197,4 @@ class APITokenService:
             expires_at=old_api_token.expires_at,
         )
 
-        return new_token
+        return new_token, new_record

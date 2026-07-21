@@ -115,7 +115,7 @@ class PMClient:
         self,
         title: str,
         secret_type: str,
-        encrypted_data: str,
+        plaintext_data: str,
         group_id: int,
         description: str | None = None,
         username: str | None = None,
@@ -126,7 +126,7 @@ class PMClient:
         data = {
             "title": title,
             "secret_type": secret_type,
-            "encrypted_data": encrypted_data,
+            "plaintext_data": plaintext_data,
             "group_id": group_id,
         }
         if description:
