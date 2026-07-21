@@ -50,10 +50,12 @@ Esto genera automáticamente:
 | Backend API | http://localhost:8000 |
 | Docs Swagger | http://localhost:8000/docs |
 
-El usuario admin se crea automáticamente con una contraseña generada al azar. Si necesitás resetearla, ejecutá:
+El usuario `admin` se crea automáticamente con una **contraseña aleatoria segura de 32 caracteres** (o el valor provisto en la variable de entorno `ADMIN_INITIAL_PASSWORD`). La contraseña inicial se imprime en la salida estándar durante la ejecución del script y el sistema exige cambiarla obligatoriamente en el primer inicio de sesión.
+
+Si necesitás re-seedear la base de datos:
 
 ```bash
-./deploy.sh seed   # Re-seedea la base (no crea otro admin si ya existe)
+ADMIN_INITIAL_PASSWORD="TuPasswordSegura123!" ./deploy.sh seed   # Re-seedea la base con contraseña elegida
 ```
 
 ## Despliegue en Producción
@@ -105,12 +107,13 @@ En producción, **nunca** uses valores por defecto ni hardcodeados. Todas estas 
 | Variable | Descripción | Cómo generar |
 |----------|-------------|--------------|
 | `DATABASE_URL` | Connection string de PostgreSQL | `postgresql+asyncpg://user:pass@host:5432/dbname` |
-| `ENCRYPTION_KEY` | Clave Fernet (32 bytes base64) para encriptar secretos en reposo | `openssl rand -base64 32` |
+| `ENCRYPTION_KEY` | **Obligatoria**: Clave Fernet (32 bytes base64url) para cifrar secretos en reposo | `openssl rand -base64 32` |
 | `POSTGRES_PASSWORD` | Contraseña del usuario PostgreSQL | `openssl rand -hex 32` |
+| `ADMIN_INITIAL_PASSWORD` | **Opcional**: Contraseña inicial para el usuario `admin` en el seed | Cualquier string seguro de mín. 12 chars |
 | `RSA_KEY_PASSPHRASE` | **Opcional pero recomendado**: passphrase para cifrar la clave privada RSA en disco | Cualquier string aleatorio seguro |
 | `DOCS_ENABLED` | **Debe ser `false` en producción**. Habilita Swagger UI y ReDoc | `true` (dev) o `false` (prod) |
 
-> ⚠️ **Sin `ENCRYPTION_KEY`, todos los secretos encriptados se pierden para siempre.**
+> ⚠️ **Sin `ENCRYPTION_KEY` configurada y válida, la aplicación no arrancará por seguridad para evitar la pérdida o corrupción de datos.**
 > ⚠️ **Sin `POSTGRES_PASSWORD`, la base de datos no arranca.**
 > ⚠️ **Si no se configura `RSA_KEY_PASSPHRASE`, la clave privada JWT se almacena sin cifrar en disco — cualquiera con acceso al filesystem puede forjar tokens de admin.**
 > ⚠️ **Si `DOCS_ENABLED=true` en producción, se expone la documentación interactiva de la API — revela endpoints, schemas y comportamientos internos.**
@@ -465,9 +468,11 @@ ia-tests-2/
 
 | Característica | Implementación |
 |----------------|----------------|
-| Autenticación | JWT RS256 (asimétrico, par RSA autogenerado) |
+| Autenticación | JWT RS256 (asimétrico, par RSA autogenerado) + lista de revocación de tokens (`revoked_tokens`) |
 | Passwords | bcrypt con salt + política de complejidad (mín. 12 chars, mayúscula, minúscula, dígito, carácter especial) |
+| API Tokens | SHA-256 hash indexado para verificación $O(1)$ sin impacto en CPU |
 | Secrets en reposo | Fernet (AES-128-CBC) |
+| Backups & Restore | Validación estricta de `backup_id` y prevención de Travesía de Directorios (Tar-Slip) |
 | Rate limiting | slowapi (5 req/min en login, 10/h en registro, 60/min en endpoints admin y secret access) |
 | Audit logging | IP, user-agent, timestamp en reveal/copy |
 | Headers seguridad | HSTS, X-Frame-Options: DENY, CSP, nosniff |
